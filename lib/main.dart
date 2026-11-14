@@ -298,7 +298,7 @@ class _HomeState extends State<Home> {
         try {
           final t = await scanScreenQr();
           if (t == null) return _toast('No QR code found');
-          return _importText(t, 'QR code');
+          return await _importText(t, 'QR code');
         } catch (e) {
           return _toast('$e');
         }
@@ -313,7 +313,7 @@ class _HomeState extends State<Home> {
               ? await decodeQrFile(p)
               : await File(p).readAsString();
           if (t == null) return _toast('No QR code found in image');
-          return _importText(t, a == 'qrfile' ? 'QR image' : 'file');
+          return await _importText(t, a == 'qrfile' ? 'QR image' : 'file');
         } catch (e) {
           return _toast('$e');
         }
