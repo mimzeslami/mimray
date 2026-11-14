@@ -21,31 +21,27 @@ curl -fsSL https://raw.githubusercontent.com/mimzeslami/mimray/main/install.sh |
 
 Installs `mimray.app` to `/Applications` and opens it. Or download the `.dmg` from [Releases](https://github.com/mimzeslami/mimray/releases) and drag it to Applications (first launch: right-click → Open, because the app isn't notarized).
 
-### Linux (x86_64, glibc distros: Ubuntu, Debian, Fedora, Arch, Mint…)
+### Linux (x86_64 — Ubuntu, Debian, Mint, Fedora, Arch, openSUSE…)
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/mimzeslami/mimray/main/install.sh | sh
 ```
 
-Installs to `~/.local/share/mimray`, adds a `mimray` command and an app-menu entry. Requirements:
+That's all — **no Flutter needed**. The installer:
 
-```sh
-# Debian/Ubuntu
-sudo apt install libgtk-3-0 policykit-1 zenity gnome-screenshot
-# Fedora
-sudo dnf install gtk3 polkit zenity gnome-screenshot
-# Arch
-sudo pacman -S gtk3 polkit zenity gnome-screenshot
-```
+- installs the system packages it needs (GTK 3, polkit, zenity, gnome-screenshot) with apt / dnf / pacman / zypper — it asks for your sudo password once
+- downloads the latest release and **verifies its sha256** against the release's `SHA256SUMS`
+- installs to `~/.local/share/mimray`, adds the `mimray` command and an app-menu entry
 
-`polkit` (pkexec) is required to start the tunnel; `zenity` and a screenshot tool are only needed for file dialogs and QR scanning.
+**Run it:** type `mimray` in a terminal, or open **mimray** from your app menu.
+Then **+ Add → Add subscription**, pick a server (or Auto) and flip the switch — you'll be asked for your password to start the tunnel.
 
-The installer verifies the download against the release's `SHA256SUMS` before installing.
+**Update:** run the same command again.
 
 ### Uninstall
 
 - macOS: delete `/Applications/mimray.app` and `~/Library/Application Support/mimray`
-- Linux: `rm -rf ~/.local/share/mimray ~/.local/bin/mimray ~/.local/share/applications/mimray.desktop ~/.config/mimray`
+- Linux: `rm -rf ~/.local/share/mimray ~/.local/bin/mimray ~/.local/share/applications/mimray.desktop ~/.config/mimray; sudo rm -f /usr/local/bin/mimray`
 
 ## Usage
 
