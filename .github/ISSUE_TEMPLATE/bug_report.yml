@@ -1,0 +1,27 @@
+name: Bug report
+description: Something doesn't work
+labels: [bug]
+body:
+  - type: input
+    id: os
+    attributes: { label: OS and version, placeholder: "Ubuntu 24.04 / macOS 15.2" }
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes: { label: mimray version, placeholder: "0.2.0 (☰ → Settings → About)" }
+    validations: { required: true }
+  - type: dropdown
+    id: protocol
+    attributes:
+      label: Protocol
+      options: [VMess, VLESS, VLESS Reality, Trojan, Shadowsocks, Hysteria2, Not protocol related]
+  - type: textarea
+    id: what
+    attributes: { label: What happened, description: "Steps, what you expected, what you saw" }
+    validations: { required: true }
+  - type: textarea
+    id: log
+    attributes:
+      label: Core log
+      description: "☰ → Core log. REMOVE server addresses, UUIDs and passwords before pasting. Never paste share links or subscription URLs."
+      render: text
