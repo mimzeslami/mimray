@@ -18,6 +18,9 @@ Future<void> initAndroidVpn() async {
   installApk = (path) =>
       _method.invokeMethod<void>('installApk', {'path': path});
   androidOpenUrl = (url) => _method.invokeMethod<void>('openUrl', {'url': url});
+  androidScanQr = () => _method.invokeMethod<String>('scanQr');
+  androidPickFile = (mime) =>
+      _method.invokeMethod<String>('pickFile', {'mime': mime});
   void Function(int)? onExit;
 
   void log(String line) {
