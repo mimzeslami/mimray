@@ -22,6 +22,12 @@ fi
 linux_deps() {
   [ "${MIMRAY_NO_DEPS:-}" = 1 ] && return
   say "Installing dependencies (GTK 3, polkit, zenity, screenshot tool)"
+  # a failed package install (mirror hiccup, no sudo) must not abort the app install;
+  # the checks at the end flag anything critical
+  install_pkgs || warn "Some packages couldn't be installed; continuing (see warnings below)."
+}
+
+install_pkgs() {
   if command -v apt-get >/dev/null; then
     # policykit-1 was split into pkexec on newer Debian/Ubuntu
     PK=pkexec; apt-cache show pkexec >/dev/null 2>&1 || PK=policykit-1
