@@ -12,6 +12,14 @@ import 'package:mimray/links.dart';
 Future<void> main() async {
   final core = Platform.environment['MIMRAY_CORE']!;
   final dir = await Directory.systemTemp.createTemp('mimray-e2e');
+  // The test proxy runs on this same PC; bind its outgoing traffic to the real
+  // adapter, or it would loop back into the tunnel (a real server is elsewhere).
+  final nic = (await Process.run('powershell', [
+    '-NoProfile',
+    '-Command',
+    '(Get-NetRoute -DestinationPrefix 0.0.0.0/0 | Sort-Object RouteMetric | Select-Object -First 1).InterfaceAlias',
+  ])).stdout.toString().trim();
+  stdout.writeln('physical interface: $nic');
   final serverCfg = File('${dir.path}\\server.json')
     ..writeAsStringSync(
       jsonEncode({
@@ -26,7 +34,7 @@ Future<void> main() async {
           },
         ],
         'outbounds': [
-          {'type': 'direct'},
+          {'type': 'direct', 'bind_interface': nic},
         ],
       }),
     );
