@@ -155,3 +155,7 @@ Bug reports, fixes and features are welcome; see [CONTRIBUTING.md](CONTRIBUTING.
 - Camera QR scanning and file import/export on Android
 - Background helper on Windows (no UAC prompt per connect)
 - Notarized macOS builds
+
+## License
+
+mimray is free software under the [GNU General Public License v3.0 or later](LICENSE) (`GPL-3.0-or-later`), the same license as the bundled [sing-box](https://github.com/SagerNet/sing-box) core. You can use, study, share and change it; versions you distribute must stay under the same license. Fonts: Geist (SIL OFL 1.1, see `assets/fonts/OFL.txt`).
