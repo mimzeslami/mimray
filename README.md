@@ -139,6 +139,31 @@ The **Free** tab is off until you turn it on. It lists public free servers from 
 
 If you installed the background helper, remove it first: ⚙ Preferences → **Remove**.
 
+## How it works
+
+mimray is a Flutter app for the interface. All the VPN protocol work is done by **[sing-box](https://github.com/SagerNet/sing-box)**, the open-source proxy engine; mimray never implements VLESS, Reality and the rest itself.
+
+1. **Links to sing-box config.** [`lib/links.dart`](lib/links.dart) turns share links (`vless://`, `vmess://`, `trojan://`, `ss://`, `hy2://`), subscriptions and v2ray/xray/sing-box JSON into sing-box *outbounds*.
+2. **Full config.** [`lib/core.dart`](lib/core.dart) wraps them into a complete sing-box config:
+   - a **TUN** inbound (a virtual network card, so the whole device goes through the VPN);
+   - **DNS-over-HTTPS** through the tunnel;
+   - routing rules (local network direct, QUIC blocked, Gemini via a supported country);
+   - a **urltest** group for Auto mode;
+   - a local stats API.
+3. **Running it**, per platform:
+
+   | Platform | How sing-box runs |
+   |---|---|
+   | macOS / Linux | The official sing-box binary, pinned and sha256-verified, bundled in the app. It starts as root with the password prompt, or through the small Go **helper** service ([`helper/`](helper/), no password per connect). |
+   | Windows | The same binary, started through UAC. Its WinTUN driver provides the tunnel. |
+   | Android | **libbox**, sing-box built as an Android library, running inside a Kotlin `VpnService` that hands it the tunnel. |
+
+4. **Live info.** The app polls sing-box's local stats API on `127.0.0.1` for speed, traffic, connections and the server Auto picked.
+
+Everything else is the app layer: the UI, subscriptions, the Free tab (it tests servers by running sing-box *without* a tunnel and fetching a page through each one), QR, import/export, in-app updates, and packaging and CI.
+
+In short, sing-box does the networking, and mimray builds its config, runs it safely on each OS, and wraps it in a friendly UI.
+
 ## Security
 
 - **Pinned core:** the sing-box core is pinned to one version and its sha256 is verified at build time. Releases and in-app updates are verified against `SHA256SUMS`.
