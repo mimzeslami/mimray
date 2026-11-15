@@ -34,8 +34,8 @@
 
 | Platform | Recommended | Other ways |
 |---|---|---|
-| **macOS** 11+ (Apple Silicon & Intel) | `brew install --cask mimzeslami/mimray/mimray` | [Install script](#macos), [.dmg](https://github.com/mimzeslami/mimray/releases/latest) |
-| **Windows** 10/11 (x64) | [Scoop](#windows) or the [install script](#windows) | `winget install mimray` (once Microsoft approves it), [.zip](https://github.com/mimzeslami/mimray/releases/latest) |
+| **macOS** 11+ (Apple Silicon & Intel) | [Homebrew](#macos) | [Install script](#macos), [.dmg](https://github.com/mimzeslami/mimray/releases/latest) |
+| **Windows** 10/11 (x64) | [Scoop](#windows) or the [install script](#windows) | winget ([pending review](https://github.com/microsoft/winget-pkgs/pull/480738)), [.zip](https://github.com/mimzeslami/mimray/releases/latest) |
 | **Linux** (x86_64) | `.deb` / `.rpm` from [Releases](https://github.com/mimzeslami/mimray/releases/latest) | [Install script](#linux), [.tar.gz](https://github.com/mimzeslami/mimray/releases/latest) |
 | **Android** 7.0+ | `.apk` from [Releases](https://github.com/mimzeslami/mimray/releases/latest) | [Obtainium](#android) (auto-updates from GitHub) |
 
@@ -43,8 +43,12 @@ No Flutter, Go or developer tools are needed to install. Every download is check
 
 ### macOS
 
+With [Homebrew](https://brew.sh):
+
 ```sh
-brew install --cask mimzeslami/mimray/mimray
+brew tap mimzeslami/mimray
+brew trust mimzeslami/mimray     # Homebrew 7+ asks you to trust third-party taps once
+brew install --cask mimray
 ```
 
 Or the install script, which also sets up the background helper (no password on every connect):
@@ -70,7 +74,7 @@ Or in PowerShell, the install script (installs to `%LOCALAPPDATA%\Programs\mimra
 irm https://raw.githubusercontent.com/mimzeslami/mimray/main/install.ps1 | iex
 ```
 
-With winget, once the submission is approved by Microsoft:
+With winget, once [the submission](https://github.com/microsoft/winget-pkgs/pull/480738) is approved by Microsoft:
 
 ```powershell
 winget install mimray
