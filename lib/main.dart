@@ -24,7 +24,7 @@ part 'ui/desktop.dart';
 part 'ui/mobile.dart';
 part 'ui/free_tab.dart';
 
-const appVersion = '0.5.2';
+const appVersion = '0.5.3';
 
 bool get _desktopOs =>
     Platform.isMacOS || Platform.isWindows || Platform.isLinux;
@@ -99,7 +99,8 @@ class _HomeState extends State<Home> with TrayListener {
   bool busy = false;
   String? helper; // helper version when installed (no password prompts)
   updater.Update? update; // newer release available
-  double? updateProgress; // non-null while downloading
+  double? updateProgress;
+  bool checkingUpdate = false; // non-null while downloading
   Timer? _updateTimer;
   String? msg;
 
@@ -189,13 +190,7 @@ class _HomeState extends State<Home> with TrayListener {
       (_) => _autoFree(),
     );
     // check shortly after launch, then every 6 hours (cancellable timers)
-    _updateTimer = Timer(const Duration(seconds: 5), () {
-      _checkUpdate();
-      _updateTimer = Timer.periodic(
-        const Duration(hours: 6),
-        (_) => _checkUpdate(),
-      );
-    });
+    _updateTimer = Timer(const Duration(seconds: 5), _checkUpdate);
   }
 
   @override
@@ -943,16 +938,31 @@ class _HomeState extends State<Home> with TrayListener {
 
   // ---------- helper / log ----------
 
+  /// Background: 5 s after launch, then every 6 h; after a failure (flaky or
+  /// blocked network) retry in 15 min instead of waiting 6 h.
+  /// Manual (Check for updates): always says what happened.
   Future<void> _checkUpdate({bool manual = false}) async {
+    if (demo || checkingUpdate) return;
+    setState(() => checkingUpdate = true);
+    var next = const Duration(hours: 6);
     try {
       final u = await updater.check(appVersion);
       if (!mounted) return;
       setState(() => update = u);
-      if (manual && u == null) {
-        _toast('mimray $appVersion is the latest version');
+      if (manual) {
+        _toast(
+          u == null
+              ? 'You have the latest version ($appVersion)'
+              : 'mimray ${u.version} is available — tap Update',
+        );
       }
     } catch (e) {
-      if (manual) _toast('Update check failed: $e');
+      next = const Duration(minutes: 15);
+      if (manual) _toast('Couldn\'t check for updates: $e');
+    } finally {
+      if (mounted) setState(() => checkingUpdate = false);
+      _updateTimer?.cancel();
+      if (mounted) _updateTimer = Timer(next, _checkUpdate);
     }
   }
 

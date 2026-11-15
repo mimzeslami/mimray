@@ -172,7 +172,8 @@ class MimrayVpnService : VpnService(), PlatformInterface, CommandServerHandler {
             @Suppress("DEPRECATION") Notification.Builder(this)
         }
         val n = builder
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_mimray)
+            .setColor(0xFF2F7BFF.toInt())
             .setContentTitle("mimray")
             .setContentText("VPN is on")
             .setContentIntent(open)
