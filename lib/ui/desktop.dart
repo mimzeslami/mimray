@@ -11,7 +11,7 @@ extension _DesktopShell on _HomeState {
         Column(
           children: [
             _dHeader(),
-            if (servers.isEmpty)
+            if (servers.isEmpty && tab != 'free')
               Expanded(child: _dEmpty())
             else ...[
               _dToolbar(),
@@ -64,7 +64,7 @@ extension _DesktopShell on _HomeState {
     final (c1, c2, sc, label) = _phaseLook(phase);
     final on = phase == Phase.on;
     final a = activeIndex;
-    final cc = a == null ? null : _cc(servers[a].name);
+    final cc = a == null ? null : _cc(pool[a].name);
     return GestureDetector(
       onPanStart: (_) => dragWindow(),
       child: AnimatedContainer(
@@ -150,6 +150,10 @@ extension _DesktopShell on _HomeState {
                               style: _t(20, _w7, Colors.white, -.2),
                             ),
                           ),
+                          if (onFree) ...[
+                            const SizedBox(width: 8),
+                            _freeBadge(),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -166,7 +170,7 @@ extension _DesktopShell on _HomeState {
                 _PowerButton(
                   phase: phase,
                   size: 64,
-                  onTap: servers.isEmpty ? null : _toggle,
+                  onTap: pool.isEmpty ? null : _toggle,
                 ),
               ],
             ),
@@ -446,6 +450,7 @@ extension _DesktopShell on _HomeState {
                   ),
                 ],
               ),
+              _tryFree(),
             ], 8),
           ),
         ],

@@ -251,6 +251,7 @@ Widget _seg<T>({
   double font = 12,
   double icon = 14,
   Color active = _line,
+  bool compact = false, // label on the active segment only (4 tabs in 360 px)
 }) => Container(
   padding: EdgeInsets.all(inner),
   decoration: BoxDecoration(
@@ -262,33 +263,47 @@ Widget _seg<T>({
     children: [
       for (final (v, l, i) in items)
         Expanded(
+          flex: compact && v == value ? 5 : 3,
           child: GestureDetector(
             onTap: () => onTap(v),
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                height: height,
-                decoration: BoxDecoration(
-                  color: v == value ? active : Colors.transparent,
-                  borderRadius: BorderRadius.circular(radius - inner),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (i != null) ...[
-                      Icon(
-                        v == value ? i : _outline(i),
-                        size: icon,
-                        color: v == value ? Colors.white : _muted,
-                      ),
-                      SizedBox(width: font > 13 ? 5 : 4),
+              child: Tooltip(
+                message: compact && v != value ? l : '',
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  height: height,
+                  decoration: BoxDecoration(
+                    color: v == value ? active : Colors.transparent,
+                    borderRadius: BorderRadius.circular(radius - inner),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (i != null)
+                        Icon(
+                          v == value ? i : _outline(i),
+                          size: icon,
+                          color: v == value ? Colors.white : _muted,
+                        ),
+                      if (!compact || v == value) ...[
+                        if (i != null) SizedBox(width: font > 13 ? 5 : 4),
+                        Flexible(
+                          child: Text(
+                            l,
+                            maxLines: 1,
+                            overflow: TextOverflow.fade,
+                            softWrap: false,
+                            style: _t(
+                              font,
+                              _w6,
+                              v == value ? Colors.white : _muted,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
-                    Text(
-                      l,
-                      style: _t(font, _w6, v == value ? Colors.white : _muted),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),

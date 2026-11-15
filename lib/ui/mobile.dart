@@ -133,7 +133,7 @@ extension _MobileShell on _HomeState {
             phase: phase,
             size: 148,
             mobile: true,
-            onTap: servers.isEmpty ? null : _toggle,
+            onTap: pool.isEmpty ? null : _toggle,
           ),
           const SizedBox(height: 26),
           Row(
@@ -174,7 +174,10 @@ extension _MobileShell on _HomeState {
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [header, if (servers.isEmpty) _mEmpty() else _mCards()],
+        children: [
+          header,
+          if (pool.isEmpty && !onFree) _mEmpty() else _mCards(),
+        ],
       ),
     );
   }
@@ -189,11 +192,11 @@ extension _MobileShell on _HomeState {
   );
 
   Widget _mCards() {
-    final a = activeIndex, cc = a == null ? null : _cc(servers[a].name);
-    final title = selected >= 0
-        ? '${_clean(servers[selected].name)}, ${countryName(cc)}'
+    final a = activeIndex, cc = a == null ? null : _cc(pool[a].name);
+    final title = selected >= 0 && !onFree
+        ? '${_clean(pool[selected].name)}, ${countryName(cc)}'
         : locTitle;
-    final s = stats, u = _Usage(subs[cur].usage);
+    final s = stats, u = _Usage(subs.isEmpty ? const {} : subs[cur].usage);
     Widget rate(bool dl) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -228,7 +231,12 @@ extension _MobileShell on _HomeState {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('LOCATION', style: _t(11, _w6, _muted, .6)),
+                    Row(
+                      children: [
+                        Text('LOCATION', style: _t(11, _w6, _muted, .6)),
+                        if (onFree) ...[const SizedBox(width: 6), _freeBadge()],
+                      ],
+                    ),
                     const SizedBox(height: 2),
                     Text(
                       title,
@@ -242,7 +250,10 @@ extension _MobileShell on _HomeState {
               const Icon(Icons.chevron_right_rounded, size: 22, color: _muted),
             ],
           ),
-          () => rebuild(() => nav = 1),
+          () => rebuild(() {
+            nav = 1;
+            if (onFree) tab = 'free';
+          }),
         ),
         if (phase == Phase.on)
           _mCard(
@@ -358,6 +369,7 @@ extension _MobileShell on _HomeState {
           ),
         ],
       ),
+      _tryFree(),
     ], 14),
   );
 
@@ -426,7 +438,7 @@ extension _MobileShell on _HomeState {
           ], 10),
         ),
         Expanded(
-          child: servers.isEmpty
+          child: servers.isEmpty && tab != 'free'
               ? Center(
                   child: Text(
                     'No servers yet',

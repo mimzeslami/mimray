@@ -72,6 +72,11 @@ Import with **+ Add → Add servers manually** or **Import from clipboard** (cam
 3. ☆ pins a location to **Favorites**; **Recent** lists the last ones you connected to. ⋯ (or right-click / long-press) on a location shows its QR, copy link, export, delete. The bar at the bottom opens the subscription: usage, switch, update, export, edit.
 4. ⚙ **Preferences**: connect on launch, smart Gemini routing, block QUIC, bypass LAN, DNS provider, core log.
 5. Desktop: the tray / menu-bar icon shows the status and quick-connects to favorites.
+6. **Free** tab (off by default): public free servers ([barry-far/V2ray-Config](https://github.com/barry-far/V2ray-Config), MIT) and servers shared by the community, tested from your device so only working ones are listed. Read the warning when you turn it on: free servers are run by strangers who can watch unencrypted traffic, so don't use them for logins, banking or anything sensitive. **Share your server** opens a GitHub form; shared servers appear after the maintainer approves them.
+
+### Free servers: how they're tested
+
+*Update* downloads a few public lists plus `community/servers.json`, samples up to 200 configs and tests each from your device. Desktop runs the bundled sing-box core as your normal user — no TUN, no root, only a local API on `127.0.0.1` — and fetches `https://www.gstatic.com/generate_204` through every server; up to 50 working ones are kept, fastest first. Android has no separate core, so it only checks that each server is reachable (TCP); Auto then picks one that works when you connect. Testing is skipped while connected (results would go through the tunnel). Try it from a terminal: `dart run tool/free_check.dart <path/to/sing-box> all`.
 
 ## Security notes
 

@@ -845,7 +845,7 @@ extension _Sheets on _HomeState {
 
   Future<void> statsSheet() => _sheet((c) {
     final st = stats, a = activeIndex;
-    final srv = a == null ? null : servers[a];
+    final srv = a == null ? null : pool[a];
     final peak = [...down, ...up, 0.0].reduce(math.max);
     final cc = ip?['country'] is String ? ip!['country'] as String : null;
     final loc = [
@@ -1002,7 +1002,7 @@ extension _Sheets on _HomeState {
 
   Future<void> _logSheet() => _sheet((c) {
     final lines = logText.isEmpty ? ['No log yet.'] : logText.split('\n');
-    final a = activeIndex, host = a == null ? null : servers[a].host;
+    final a = activeIndex, host = a == null ? null : pool[a].host;
     Color col(String l) => l.contains('ERROR') || l.contains('FATAL')
         ? _red
         : l.contains('WARN')
@@ -1195,35 +1195,24 @@ extension _Sheets on _HomeState {
         'Connection',
         _box([
           for (final (t, s, v, f) in rows)
-            _tap(
-              radius: 0,
-              hover: _card2,
-              onTap: () => setOpt(() => f(!v)),
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: m ? 14 : 12,
-                  vertical: m ? 12 : 10,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(t, style: _t(m ? 15 : 13, _w5)),
-                          const SizedBox(height: 2),
-                          Text(
-                            s,
-                            style: _t(m ? 12 : 11, FontWeight.w400, _muted),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    _Toggle(v, mobile: m),
-                  ],
-                ),
-              ),
+            _switchRow(t, s, v, () => setOpt(() => f(!v))),
+        ]),
+      ),
+      section(
+        'Free servers',
+        _box([
+          _switchRow(
+            'Free servers (community)',
+            'Public servers run by strangers — read the warning first',
+            freeOn,
+            () => setFree(!freeOn),
+          ),
+          if (freeOn)
+            _switchRow(
+              'Auto-update',
+              'Re-test every 6 hours while disconnected',
+              freeAuto,
+              () => setOpt(() => freeAuto = !freeAuto),
             ),
         ]),
       ),
@@ -1319,6 +1308,34 @@ extension _Sheets on _HomeState {
         _about(),
     ];
   }
+
+  Widget _switchRow(String t, String s, bool v, VoidCallback onTap) => _tap(
+    radius: 0,
+    hover: _card2,
+    onTap: onTap,
+    child: Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: m ? 14 : 12,
+        vertical: m ? 12 : 10,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(t, style: _t(m ? 15 : 13, _w5)),
+                const SizedBox(height: 2),
+                Text(s, style: _t(m ? 12 : 11, FontWeight.w400, _muted)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          _Toggle(v, mobile: m),
+        ],
+      ),
+    ),
+  );
 
   Widget _about() => Padding(
     padding: EdgeInsets.symmetric(horizontal: m ? 14 : 2, vertical: m ? 13 : 2),
