@@ -1,0 +1,3 @@
+tags:
+  shots:
+    skip: "screenshots: flutter test --run-skipped --tags shots test/shots_test.dart"
