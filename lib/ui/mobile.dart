@@ -218,6 +218,7 @@ extension _MobileShell on _HomeState {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       child: _gap([
+        if (update != null) _updateBanner(mobile: true),
         _mCard(
           Row(
             children: [

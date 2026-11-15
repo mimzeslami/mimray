@@ -17,6 +17,7 @@ extension _DesktopShell on _HomeState {
               _dToolbar(),
               Expanded(child: _locations()),
             ],
+            if (update != null) _updateBanner(),
             if (subs.isNotEmpty) _dUsage(),
           ],
         ),

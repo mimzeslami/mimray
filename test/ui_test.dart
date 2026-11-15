@@ -69,6 +69,19 @@ void main() {
     }
   }
 
+  for (final phase in ['off', 'on']) {
+    testWidgets('update banner fits: desktop + mobile, $phase', (t) async {
+      final d = {...demo(phase: phase), '_update': '9.9.9'};
+      await show(t, desktop, d);
+      expect(find.text('mimray 9.9.9 is available'), findsOneWidget);
+      expect(find.text('Update'), findsOneWidget);
+      expect(t.takeException(), isNull);
+      await show(t, phone, d, mobile: true);
+      expect(find.text('mimray 9.9.9 is available'), findsOneWidget);
+      expect(t.takeException(), isNull);
+    });
+  }
+
   testWidgets('old state files (no favorites/recent, v1 layout) still load', (
     t,
   ) async {

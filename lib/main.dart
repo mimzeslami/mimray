@@ -9,10 +9,12 @@ import 'package:flutter/services.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'android_vpn.dart';
 import 'core.dart';
 import 'countries.dart';
 import 'links.dart';
 import 'native.dart';
+import 'updater.dart' as updater;
 
 part 'ui/kit.dart';
 part 'ui/shared.dart';
@@ -20,13 +22,14 @@ part 'ui/list.dart';
 part 'ui/desktop.dart';
 part 'ui/mobile.dart';
 
-const appVersion = '0.3.0';
+const appVersion = '0.4.0';
 
 bool get _desktopOs =>
     Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initAndroidVpn(); // no-op on desktop
   if (_desktopOs) {
     await windowManager.ensureInitialized();
     // macOS and Linux are frameless + fixed natively (MainFlutterWindow.swift,
@@ -93,6 +96,9 @@ class _HomeState extends State<Home> with TrayListener {
   Map<int, int?> pings = {};
   bool busy = false;
   String? helper; // helper version when installed (no password prompts)
+  updater.Update? update; // newer release available
+  double? updateProgress; // non-null while downloading
+  Timer? _updateTimer;
   String? msg;
 
   Phase phase = Phase.off;
@@ -152,11 +158,20 @@ class _HomeState extends State<Home> with TrayListener {
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
     _checkHelper();
     if (!mobile && _desktopOs) _initTray();
+    // check shortly after launch, then every 6 hours (cancellable timers)
+    _updateTimer = Timer(const Duration(seconds: 5), () {
+      _checkUpdate();
+      _updateTimer = Timer.periodic(
+        const Duration(hours: 6),
+        (_) => _checkUpdate(),
+      );
+    });
   }
 
   @override
   void dispose() {
     _tick?.cancel();
+    _updateTimer?.cancel();
     if (!demo) {
       core.stop();
       if (_trayReady) trayManager.removeListener(this);
@@ -202,6 +217,9 @@ class _HomeState extends State<Home> with TrayListener {
       for (final (i, v) in ((d['_pings'] as List?) ?? const []).indexed) i: v,
     };
     helper = d['_helper'];
+    if (d['_update'] case final String v) {
+      update = updater.Update(v, '', '', '', '', '');
+    }
     logText = d['_log'] ?? '';
     tab = d['_tab'] ?? 'all';
     nav = d['_nav'] ?? 0;
@@ -724,6 +742,111 @@ class _HomeState extends State<Home> with TrayListener {
   }
 
   // ---------- helper / log ----------
+
+  Future<void> _checkUpdate({bool manual = false}) async {
+    try {
+      final u = await updater.check(appVersion);
+      if (!mounted) return;
+      setState(() => update = u);
+      if (manual && u == null) {
+        _toast('mimray $appVersion is the latest version');
+      }
+    } catch (e) {
+      if (manual) _toast('Update check failed: $e');
+    }
+  }
+
+  Future<void> _installUpdate() async {
+    final u = update;
+    if (u == null || updateProgress != null) return;
+    setState(() => updateProgress = 0);
+    try {
+      final file = await updater.download(
+        u,
+        (p) => mounted ? setState(() => updateProgress = p) : null,
+      );
+      if (Platform.isAndroid) {
+        await updater.install(file); // system installer takes over
+        setState(() => updateProgress = null);
+        return;
+      }
+      if (await updater.install(file)) {
+        _toast('Installing mimray ${u.version}… the app will reopen');
+        await core.stop(); // the tunnel must not outlive the old app
+        await Future.delayed(const Duration(seconds: 2));
+        exit(0);
+      }
+      // app folder not writable (e.g. installed by another user): manual install
+      setState(() => updateProgress = null);
+      _toast('Opened the update — install it like a normal download');
+      await reveal(file);
+    } catch (e) {
+      setState(() => updateProgress = null);
+      _toast('Update failed: $e');
+    }
+  }
+
+  /// "mimray X is available" + Update button (download progress while running).
+  Widget _updateBanner({bool mobile = false}) {
+    final u = update;
+    if (u == null) return const SizedBox.shrink();
+    final p = updateProgress;
+    return Container(
+      margin: mobile ? EdgeInsets.zero : const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      padding: EdgeInsets.fromLTRB(mobile ? 16 : 12, 9, 6, 9),
+      decoration: BoxDecoration(
+        color: _selBg,
+        borderRadius: BorderRadius.circular(mobile ? 16 : 10),
+        border: Border.all(color: _blue.withValues(alpha: .45)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.system_update_alt_rounded,
+            size: mobile ? 20 : 16,
+            color: _blueLight,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'mimray ${u.version} is available',
+                  style: _t(mobile ? 14 : 12, FontWeight.w600),
+                ),
+                if (p != null) ...[
+                  const SizedBox(height: 6),
+                  LinearProgressIndicator(
+                    value: p == 0 ? null : p,
+                    minHeight: 3,
+                    color: _blue,
+                    backgroundColor: _line,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ] else
+                  Text(
+                    'You have $appVersion',
+                    style: _t(mobile ? 12 : 11, FontWeight.w400, _muted),
+                  ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: p == null ? _installUpdate : null,
+            child: Text(
+              p == null ? 'Update' : '${(p * 100).round()}%',
+              style: _t(
+                mobile ? 14 : 12,
+                FontWeight.w700,
+                p == null ? _blueLight : _muted,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _checkHelper() async {
     final v = await helperVersion();

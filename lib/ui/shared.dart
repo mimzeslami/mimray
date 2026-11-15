@@ -1342,6 +1342,13 @@ extension _Sheets on _HomeState {
             ],
           ),
         ),
+        TextButton(
+          onPressed: demo ? null : () => _checkUpdate(manual: true),
+          child: Text(
+            'Check for updates',
+            style: _t(m ? 13 : 11, _w6, _blueLight),
+          ),
+        ),
       ],
     ),
   );

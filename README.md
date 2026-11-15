@@ -1,6 +1,6 @@
 # mimray
 
-A simple, secure V2Ray-compatible VPN client for **macOS**, **Linux** and **Windows**, built with Flutter on top of the [sing-box](https://github.com/SagerNet/sing-box) core.
+A simple, secure V2Ray-compatible VPN client for **macOS**, **Linux**, **Windows** and **Android**, built with Flutter on top of the [sing-box](https://github.com/SagerNet/sing-box) core.
 
 - **Protocols:** VMess, VLESS (incl. Reality / XTLS-Vision), Trojan, Shadowsocks, Hysteria2
 - **Full-device TUN mode** – every app goes through the tunnel; DNS over HTTPS through the tunnel (no DNS leaks); IPv6 captured
@@ -51,6 +51,14 @@ Installs to `%LOCALAPPDATA%\Programs\mimray` (no admin needed), verifies the sha
 **Run it:** open **mimray** from the Start Menu. Windows asks for permission (UAC) each time you connect — that's needed for the tunnel.
 Or download the `.zip` from [Releases](https://github.com/mimzeslami/mimray/releases), unzip anywhere and run `mimray.exe`.
 
+### Android 7.0+
+
+Download the APK for your phone from [Releases](https://github.com/mimzeslami/mimray/releases):
+`…-android-arm64-v8a.apk` for almost all phones from the last ~8 years (`armeabi-v7a` for very old ones, `x86_64` for emulators/Chromebooks).
+Open it and allow *Install unknown apps* for your browser/file manager when Android asks.
+On first connect Android asks once to allow the VPN — tap **OK**.
+Import with **+ Add → Add servers manually** or **Import from clipboard** (camera QR scanning is coming).
+
 ### Uninstall
 
 - macOS: delete `/Applications/mimray.app` and `~/Library/Application Support/mimray`
@@ -100,6 +108,19 @@ flutter run -d macos     # or: flutter run -d linux
 Linux build deps: `sudo apt install clang cmake ninja-build pkg-config libgtk-3-dev libayatana-appindicator3-dev`.
 [Go](https://go.dev/dl/) 1.24+ builds the background helper (optional — without it the app asks for a password per connect).
 
+### Android build
+
+The core runs in-process through sing-box's `libbox` library, built from the pinned source with only the features mimray uses:
+
+```sh
+./tool/build_libbox.sh        # needs Go, Android SDK + NDK, JDK 17 → android/app/libs/libbox.aar
+flutter run -d <device>       # or: TARGET=android ./tool/release.sh  → dist/*.apk
+```
+
+Release signing: add repository secrets `ANDROID_KEYSTORE_B64` (base64 of your .jks), `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Keep that keystore safe: Android only installs updates signed with the same key.
+Without the secrets, CI builds are debug-signed (fine for testing; updates between CI builds may need an uninstall).
+
 ### Signed + notarized macOS releases
 
 CI signs and notarizes automatically once these repository secrets exist (Settings → Secrets → Actions):
@@ -126,4 +147,4 @@ flutter test                 # parsers, config, QR, UI layout
 
 ## Roadmap
 
-Android build (in progress); background helper for Windows (no UAC prompt per connect).
+Camera QR scanning and file import/export on Android; background helper for Windows (no UAC prompt per connect).
