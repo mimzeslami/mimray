@@ -1,0 +1,46 @@
+name: Share a server
+description: Donate a server so other mimray users can connect for free. Reviewed by the maintainer before it appears in the app.
+title: "Share: "
+labels: [shared-server]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing! **Everything you post here is public**: anyone can copy the link and use your server.
+        After the maintainer reviews it, it appears in the app's **Free → Shared by the community** list.
+        Only share servers you run yourself or are allowed to share.
+  - type: input
+    id: title
+    attributes:
+      label: Title shown in the app
+      description: Short and descriptive, max 60 characters.
+      placeholder: Fast Germany server for students
+    validations: { required: true }
+  - type: textarea
+    id: link
+    attributes:
+      label: Server link
+      description: One share link (vless://, vmess://, trojan://, ss://, hy2://).
+      render: text
+    validations: { required: true }
+  - type: input
+    id: donor
+    attributes:
+      label: Your name (optional)
+      description: Shown as "by …" in the app. Leave empty to stay anonymous.
+  - type: textarea
+    id: note
+    attributes:
+      label: Note (optional)
+      description: Limits, expiry date, or anything users should know. Max 200 characters.
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Before you submit
+      options:
+        - label: I run this server or I'm allowed to share it publicly.
+          required: true
+        - label: I understand the link becomes public and anyone can use it.
+          required: true
+        - label: The server doesn't log or inspect users' traffic.
+          required: true

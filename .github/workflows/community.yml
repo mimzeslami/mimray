@@ -1,0 +1,73 @@
+name: community
+# Maintainer-moderated community servers:
+#   label an issue "approved" -> its server is added to community/servers.json
+#   label it "remove"         -> its server is removed
+# Data lives on the unprotected `community` branch; the app reads it from there.
+# Only people with triage access can add labels, and the issue text is treated
+# purely as data (passed via env, parsed by tool/community.dart, never run).
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: community-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.event.label.name == 'approved' || github.event.label.name == 'remove'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE: ${{ github.event.issue.number }}
+      ACTION: ${{ github.event.label.name == 'approved' && 'add' || 'remove' }}
+    steps:
+      - uses: actions/checkout@v4 # main: the trusted tool + the app's link parser
+      - uses: subosito/flutter-action@v2
+        with: { flutter-version: 3.44.6, channel: stable, cache: true }
+      - run: flutter pub get
+      - name: Check out the data branch
+        run: |
+          git fetch origin community
+          git worktree add data origin/community
+      - name: Update servers.json
+        id: tool
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          set +e
+          out=$(dart run tool/community.dart "$ACTION" data/community/servers.json "$ISSUE")
+          code=$?
+          echo "$out"
+          { echo 'msg<<MIMRAY_EOF'; echo "$out"; echo 'MIMRAY_EOF'; echo "code=$code"; } >> "$GITHUB_OUTPUT"
+      - name: Commit to the community branch
+        if: steps.tool.outputs.code == '0'
+        working-directory: data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add community/servers.json
+          git diff --cached --quiet && exit 0
+          git commit -m "community: $ACTION server from #$ISSUE"
+          git push origin HEAD:community
+      - name: Reply on the issue
+        env:
+          MSG: ${{ steps.tool.outputs.msg }}
+          CODE: ${{ steps.tool.outputs.code }}
+        run: |
+          if [ "$CODE" != 0 ]; then
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "❌ Not added: ${MSG#REJECTED: }
+
+          Please fix the issue (edit it) and the maintainer can approve it again."
+            gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label approved
+          elif [ "$ACTION" = add ]; then
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "✅ Approved — your server now appears in mimray under **Free → Shared by the community**. Thank you! (A maintainer can remove it later with the \`remove\` label.)"
+            gh issue close "$ISSUE" --repo "$GITHUB_REPOSITORY"
+          else
+            gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Removed from the community list."
+            gh issue close "$ISSUE" --repo "$GITHUB_REPOSITORY"
+          fi
