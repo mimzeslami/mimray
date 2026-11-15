@@ -40,6 +40,7 @@ class MainActivity : FlutterActivity() {
                 "start" -> {
                     val config = call.argument<String>("config")
                         ?: return@setMethodCallHandler result.error("args", "config missing", null)
+                    askNotificationPermission()
                     val consent = VpnService.prepare(this)
                     if (consent != null) {
                         pendingConfig = config
@@ -183,6 +184,17 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /** Android 13+ hides the "VPN is on" notification (with its Disconnect button)
+     *  until the app may post notifications: ask once on connect; the VPN starts either way. */
+    private fun askNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFY)
+        }
+    }
+
     /** The file name the user chose in the Save dialog (for the "Saved" message). */
     private fun displayName(uri: Uri): String =
         contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
@@ -212,5 +224,6 @@ class MainActivity : FlutterActivity() {
         private const val REQUEST_VPN = 1
         private const val REQUEST_PICK = 2
         private const val REQUEST_SAVE = 3
+        private const val REQUEST_NOTIFY = 4
     }
 }

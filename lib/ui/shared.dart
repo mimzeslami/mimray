@@ -1359,11 +1359,22 @@ extension _Sheets on _HomeState {
             ],
           ),
         ),
+        // the result shows right here (the banner is behind this panel)
         TextButton(
-          onPressed: demo ? null : () => _checkUpdate(manual: true),
+          onPressed: demo || checkingUpdate || updateProgress != null
+              ? null
+              : update != null
+              ? _installUpdate
+              : () => _checkUpdate(manual: true),
           child: Text(
-            'Check for updates',
-            style: _t(m ? 13 : 11, _w6, _blueLight),
+            updateProgress != null
+                ? 'Updating ${(updateProgress! * 100).round()}%'
+                : checkingUpdate
+                ? 'Checking…'
+                : update != null
+                ? 'Update to ${update!.version}'
+                : 'Check for updates',
+            style: _t(m ? 13 : 11, _w6, update != null ? _green : _blueLight),
           ),
         ),
       ],

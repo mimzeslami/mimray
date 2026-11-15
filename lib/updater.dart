@@ -71,44 +71,67 @@ String? assetSuffix() {
   return null;
 }
 
-Future<dynamic> _json(String url) async {
+/// Base for release URLs (overridable in tests).
+String githubBase = 'https://github.com';
+
+/// Latest release version, read from the github.com "latest" redirect: no API
+/// (api.github.com is often blocked/flaky and rate-limited per IP, which VPN
+/// users share), just the Location header of one small request.
+Future<String> latestVersion() async {
   final c = HttpClient()
     ..userAgent = 'mimray'
     ..connectionTimeout = const Duration(seconds: 10);
   try {
-    final res = await (await c.getUrl(Uri.parse(url))).close();
-    if (res.statusCode != 200) throw 'HTTP ${res.statusCode}';
-    return jsonDecode(await res.transform(utf8.decoder).join());
+    final req = await c.headUrl(
+      Uri.parse('$githubBase/$_repo/releases/latest'),
+    );
+    req.followRedirects = false;
+    final res = await req.close().timeout(const Duration(seconds: 15));
+    await res.drain<void>();
+    final loc = res.headers.value('location') ?? '';
+    final m = RegExp(r'/releases/tag/v?(\d[^/?#]*)').firstMatch(loc);
+    if (m == null) {
+      throw 'Could not read the latest version (HTTP ${res.statusCode})';
+    }
+    return m[1]!;
   } finally {
     c.close();
   }
 }
 
-/// The latest release if it's newer than [current] and has an asset for this
-/// device, else null. Throws on network errors.
+/// The latest release if it's newer than [current], else null (= up to date).
+/// Throws a readable message on network errors, when this device has no
+/// download, or when the release's files aren't published yet.
 Future<Update?> check(String current) async {
-  final r = await _json('https://api.github.com/repos/$_repo/releases/latest');
-  final version = (r['tag_name'] as String).replaceFirst(RegExp(r'^v'), '');
+  final version = await latestVersion();
   if (!isNewer(version, current)) return null;
   final suffix = assetSuffix();
-  if (suffix == null) return null;
-  String? url, name, sums;
-  for (final a in r['assets'] as List) {
-    final n = a['name'] as String;
-    if (n.endsWith(suffix)) {
-      url = a['browser_download_url'];
-      name = n;
-    }
-    if (n == 'SHA256SUMS') sums = a['browser_download_url'];
+  if (suffix == null) {
+    throw 'mimray $version is out, but there is no download for this device';
   }
-  if (url == null || sums == null) return null;
+  final dl = '$githubBase/$_repo/releases/download/v$version';
+  final name = 'mimray-$version$suffix';
+  final c = HttpClient()
+    ..userAgent = 'mimray'
+    ..connectionTimeout = const Duration(seconds: 10);
+  try {
+    final res = await (await c.headUrl(
+      Uri.parse('$dl/$name'),
+    )).close().timeout(const Duration(seconds: 15));
+    await res.drain<void>();
+    if (res.statusCode != 200) {
+      throw 'mimray $version is still being published — try again in a few minutes';
+    }
+  } finally {
+    c.close();
+  }
   return Update(
     version,
-    (r['body'] as String?) ?? '',
-    r['html_url'] as String,
-    name!,
-    url,
-    sums,
+    '',
+    '$githubBase/$_repo/releases/tag/v$version',
+    name,
+    '$dl/$name',
+    '$dl/SHA256SUMS',
   );
 }
 

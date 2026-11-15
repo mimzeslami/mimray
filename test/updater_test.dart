@@ -64,4 +64,59 @@ void main() {
       );
     });
   });
+
+  group('check reads the github.com latest redirect (no API)', () {
+    late HttpServer server;
+    var latest = '9.9.9';
+    var assetStatus = 200;
+
+    setUp(() async {
+      latest = '9.9.9';
+      assetStatus = 200;
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((req) {
+        final p = req.uri.path;
+        if (p.endsWith('/releases/latest')) {
+          req.response.statusCode = 302;
+          req.response.headers.set(
+            'location',
+            'http://127.0.0.1:${server.port}/mimzeslami/mimray/releases/tag/v$latest',
+          );
+        } else if (p.contains('/releases/download/')) {
+          req.response.statusCode = assetStatus;
+        } else {
+          req.response.statusCode = 404;
+        }
+        req.response.close();
+      });
+      githubBase = 'http://127.0.0.1:${server.port}';
+    });
+    tearDown(() {
+      githubBase = 'https://github.com';
+      return server.close(force: true);
+    });
+
+    test('offers a newer version with the right asset URL', () async {
+      expect(await latestVersion(), '9.9.9');
+      final u = (await check('0.5.2'))!;
+      expect(u.version, '9.9.9');
+      expect(u.assetName, 'mimray-9.9.9${assetSuffix()}');
+      expect(u.assetUrl, endsWith('/releases/download/v9.9.9/${u.assetName}'));
+      expect(u.sumsUrl, endsWith('/releases/download/v9.9.9/SHA256SUMS'));
+    });
+
+    test('same or older version = up to date', () async {
+      latest = '0.5.2';
+      expect(await check('0.5.2'), isNull);
+      expect(await check('0.6.0'), isNull);
+    });
+
+    test('release without files yet = clear error, not "up to date"', () async {
+      assetStatus = 404;
+      await expectLater(
+        check('0.5.2'),
+        throwsA(contains('still being published')),
+      );
+    });
+  });
 }
