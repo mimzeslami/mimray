@@ -24,13 +24,26 @@ jobs:
       - name: Linux helper end-to-end (Docker, real root)
         run: ./tool/linux_helper_test.sh
 
+  windows-e2e:
+    runs-on: windows-latest
+    defaults: { run: { shell: bash } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { flutter-version: 3.44.6, channel: stable, cache: true }
+      - run: flutter pub get
+      - run: ./tool/fetch_core.sh
+      - name: Windows TUN end-to-end (real UAC launcher + local proxy)
+        run: MIMRAY_CORE="$(cygpath -w "$PWD/windows/core/sing-box.exe")" dart run tool/win_e2e.dart
+
   build:
-    needs: test
+    needs: [test, windows-e2e]
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-22.04] # 22.04 = older glibc, runs on newer distros
+        os: [macos-latest, ubuntu-22.04, windows-latest] # 22.04 = older glibc, runs on newer distros
     runs-on: ${{ matrix.os }}
+    defaults: { run: { shell: bash } }
     env:
       # macOS signing + notarization switch on automatically once these secrets exist
       MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}

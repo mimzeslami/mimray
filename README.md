@@ -1,6 +1,6 @@
 # mimray
 
-A simple, secure V2Ray-compatible VPN client for **macOS** and **Linux**, built with Flutter on top of the [sing-box](https://github.com/SagerNet/sing-box) core.
+A simple, secure V2Ray-compatible VPN client for **macOS**, **Linux** and **Windows**, built with Flutter on top of the [sing-box](https://github.com/SagerNet/sing-box) core.
 
 - **Protocols:** VMess, VLESS (incl. Reality / XTLS-Vision), Trojan, Shadowsocks, Hysteria2
 - **Full-device TUN mode** – every app goes through the tunnel; DNS over HTTPS through the tunnel (no DNS leaks); IPv6 captured
@@ -39,9 +39,22 @@ Then **+ Add → Add subscription**, pick a server (or Auto) and flip the switch
 
 **Update:** run the same command again.
 
+### Windows 10/11 (x64)
+
+In **PowerShell**:
+
+```powershell
+irm https://raw.githubusercontent.com/mimzeslami/mimray/main/install.ps1 | iex
+```
+
+Installs to `%LOCALAPPDATA%\Programs\mimray` (no admin needed), verifies the sha256, adds Start Menu and Desktop shortcuts and opens the app.
+**Run it:** open **mimray** from the Start Menu. Windows asks for permission (UAC) each time you connect — that's needed for the tunnel.
+Or download the `.zip` from [Releases](https://github.com/mimzeslami/mimray/releases), unzip anywhere and run `mimray.exe`.
+
 ### Uninstall
 
 - macOS: delete `/Applications/mimray.app` and `~/Library/Application Support/mimray`
+- Windows: delete `%LOCALAPPDATA%\Programs\mimray`, `%APPDATA%\mimray` and the two `mimray` shortcuts
 - Linux: `rm -rf ~/.local/share/mimray ~/.local/bin/mimray ~/.local/share/applications/mimray.desktop ~/.config/mimray; sudo rm -f /usr/local/bin/mimray`
 
 ## Usage
@@ -112,4 +125,4 @@ flutter test                 # parsers, config, QR, UI layout
 
 ## Roadmap
 
-Windows and Android builds (in progress).
+Android build (in progress); background helper for Windows (no UAC prompt per connect).

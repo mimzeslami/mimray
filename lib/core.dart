@@ -4,9 +4,17 @@ import 'dart:io';
 import 'dart:math';
 
 final _home = Platform.environment['HOME'];
-final appDir = Platform.isMacOS
+final appDir = Platform.isWindows
+    ? '${Platform.environment['APPDATA']}\\mimray'
+    : Platform.isMacOS
     ? '$_home/Library/Application Support/mimray'
     : '${Platform.environment['XDG_CONFIG_HOME'] ?? '$_home/.config'}/mimray';
+
+/// Owner-only file permissions (files hold credentials). On Windows the
+/// per-user AppData folder already restricts access.
+Future<void> privateFile(String path) async {
+  if (!Platform.isWindows) await Process.run('chmod', ['600', path]);
+}
 
 /// Gemini / Google AI endpoints. Google gates these by exit-IP country.
 const aiDomains = [
@@ -259,17 +267,22 @@ class Core {
       opt: opt,
       api: _api,
       secret: _secret,
-      stack: Platform.isLinux ? 'gvisor' : 'mixed',
+      // gvisor on Linux (ufw/firewalld can drop the system stack's TCP) and
+      // Windows (avoids firewall prompts); mixed is fastest on macOS
+      stack: Platform.isMacOS ? 'mixed' : 'gvisor',
       ipv6: !Platform.isLinux || _linuxV6(),
     );
+    _stopping = false;
     if (await helperVersion() != null) {
       return _startViaHelper(config, onExit);
     }
     await cfg.writeAsString(jsonEncode(config));
-    await Process.run('chmod', ['600', cfg.path]); // contains credentials
+    await privateFile(cfg.path); // contains credentials
     final stop = File(_stop);
     if (await stop.exists()) await stop.delete();
 
+    _stopping = false;
+    if (Platform.isWindows) return _startWindows(cfg.path, onExit);
     final bin = '${File(Platform.resolvedExecutable).parent.path}/sing-box';
     // Root shell: run core, kill it when the app dies or the stop file appears,
     // so a crashed UI never leaves the network hijacked.
@@ -294,7 +307,41 @@ class Core {
     _p = p;
     p.exitCode.then((c) {
       _p = null;
-      onExit(c);
+      onExit(_stopping ? 0 : c); // a stop the user asked for is not an error
+    });
+  }
+
+  /// Windows: UAC prompt per connect; the elevated PowerShell runs the core and
+  /// stops it when the app exits or the stop file appears (same as macOS/Linux).
+  Future<void> _startWindows(String cfg, void Function(int) onExit) async {
+    String q(String s) => "'${s.replaceAll("'", "''")}'";
+    final bin =
+        Platform.environment['MIMRAY_CORE'] ??
+        '$_exeDir\\sing-box.exe'; // env: tests
+    final inner =
+        '\$p = Start-Process -FilePath ${q(bin)} -ArgumentList ${q('run -c "$cfg"')} '
+        '-NoNewWindow -PassThru -RedirectStandardError ${q(log)}\n'
+        'while (-not \$p.HasExited -and (Get-Process -Id $pid -ErrorAction SilentlyContinue) '
+        '-and -not (Test-Path ${q(_stop)})) { Start-Sleep -Milliseconds 500 }\n'
+        'if (-not \$p.HasExited) { Stop-Process -Id \$p.Id -Force; \$p.WaitForExit() }\n'
+        'exit \$p.ExitCode\n';
+    // -EncodedCommand takes UTF-16LE base64: no quoting problems with paths
+    final enc = base64.encode([
+      for (final c in inner.codeUnits) ...[c & 0xff, c >> 8],
+    ]);
+    final outer =
+        "try { \$r = Start-Process powershell -Verb RunAs -WindowStyle Hidden -Wait -PassThru "
+        "-ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand','$enc'; "
+        "exit \$r.ExitCode } catch { exit 1 }";
+    final p = await Process.start('powershell', [
+      '-NoProfile',
+      '-Command',
+      outer,
+    ]);
+    _p = p;
+    p.exitCode.then((c) {
+      _p = null;
+      onExit(_stopping ? 0 : c);
     });
   }
 
@@ -325,14 +372,17 @@ class Core {
             logSink.close();
             s.destroy();
             _h = null;
-            onExit(code);
+            onExit(_stopping ? 0 : code);
           },
           onError: (_) {},
           cancelOnError: false,
         );
   }
 
+  bool _stopping = false;
+
   Future<void> stop() async {
+    _stopping = true;
     final h = _h;
     if (h != null) {
       h.write('{"cmd":"stop"}\n');

@@ -2,6 +2,7 @@
 # One command: build a release and package an installer into dist/.
 #   macOS -> dist/mimray-<ver>-macos.dmg  (drag to Applications)
 #   Linux -> dist/mimray-<ver>-linux-<arch>.tar.gz
+#   Windows (Git Bash) -> dist/mimray-<ver>-windows-x64.zip
 #
 # macOS signing (optional, all via env):
 #   SIGN_IDENTITY="Developer ID Application: Name (TEAMID)"   sign with Developer ID
@@ -47,6 +48,14 @@ Linux)
   flutter build linux --release # core + helper are fetched/built by CMake
   B=$(echo build/linux/*/release/bundle)
   tar czf "dist/mimray-$V-linux-$(uname -m).tar.gz" -C "$B" .
+  ;;
+MINGW* | MSYS* | CYGWIN*)
+  flutter build windows --release # core is fetched + verified by CMake
+  B=build/windows/x64/runner/Release
+  # app-local MSVC runtime, so it runs without the VC++ redistributable installed
+  for d in msvcp140.dll vcruntime140.dll vcruntime140_1.dll; do cp "/c/Windows/System32/$d" "$B/"; done
+  rm -f "dist/mimray-$V-windows-x64.zip"
+  powershell -NoProfile -Command "Compress-Archive -Path '$(cygpath -w "$B")\\*' -DestinationPath '$(cygpath -w "$PWD/dist")\\mimray-$V-windows-x64.zip'"
   ;;
 *) echo "unsupported OS"; exit 1 ;;
 esac
