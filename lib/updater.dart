@@ -163,6 +163,11 @@ Future<bool> install(String file) async {
   if (Platform.isMacOS) {
     // .../mimray.app/Contents/MacOS/mimray -> .../mimray.app
     final app = exe.parent.parent.parent.path;
+    // the script replaces this folder: never act on anything but our own bundle
+    if (!app.endsWith('/mimray.app') ||
+        exe.parent.path != '$app/Contents/MacOS') {
+      return false;
+    }
     final parent = Directory(app).parent.path;
     if (!await _writable(parent) || !await _writable(app)) return false;
     final sh =
