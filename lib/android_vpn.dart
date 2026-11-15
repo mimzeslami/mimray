@@ -21,6 +21,10 @@ Future<void> initAndroidVpn() async {
   androidScanQr = () => _method.invokeMethod<String>('scanQr');
   androidPickFile = (mime) =>
       _method.invokeMethod<String>('pickFile', {'mime': mime});
+  androidSaveFile = (name, content) => _method.invokeMethod<String>(
+    'saveFile',
+    {'name': name, 'content': content},
+  );
   void Function(int)? onExit;
 
   void log(String line) {

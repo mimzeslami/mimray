@@ -16,7 +16,8 @@ import java.io.File
  * Bridge to the Dart side:
  *  - method channel "mimray/vpn": filesDir, start(config) (asks for VPN permission
  *    the first time), stop, status, installApk(path), openUrl(url),
- *    scanQr() -> text|null (camera), pickFile(mime) -> cached path|null
+ *    scanQr() -> text|null (camera), pickFile(mime) -> cached path|null,
+ *    saveFile(name, content) -> saved file name|null (system "Save as")
  *  - event channel "mimray/vpn/events": {status: starting|started|stopped, error}
  */
 class MainActivity : FlutterActivity() {
@@ -25,6 +26,8 @@ class MainActivity : FlutterActivity() {
     private var events: EventChannel.EventSink? = null
     private var pendingScan: MethodChannel.Result? = null
     private var pendingPick: MethodChannel.Result? = null
+    private var pendingSave: MethodChannel.Result? = null
+    private var pendingSaveContent: String? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -68,6 +71,18 @@ class MainActivity : FlutterActivity() {
                         .setBeepEnabled(false)
                         .setOrientationLocked(false)
                         .initiateScan()
+                }
+                "saveFile" -> {
+                    // system "Save as" dialog: the user picks the place, no storage permission
+                    pendingSave = result
+                    pendingSaveContent = call.argument<String>("content") ?: ""
+                    startActivityForResult(
+                        Intent(Intent.ACTION_CREATE_DOCUMENT)
+                            .addCategory(Intent.CATEGORY_OPENABLE)
+                            .setType("text/plain")
+                            .putExtra(Intent.EXTRA_TITLE, call.argument<String>("name") ?: "mimray.txt"),
+                        REQUEST_SAVE,
+                    )
                 }
                 "pickFile" -> {
                     // system document picker: no storage permission needed
@@ -126,6 +141,24 @@ class MainActivity : FlutterActivity() {
             pendingScan = null
             return
         }
+        if (requestCode == REQUEST_SAVE) {
+            val result = pendingSave
+            val content = pendingSaveContent
+            pendingSave = null
+            pendingSaveContent = null
+            val uri = data?.data
+            if (resultCode != RESULT_OK || uri == null || content == null) return result?.success(null) ?: Unit
+            Thread {
+                val saved = runCatching {
+                    contentResolver.openOutputStream(uri, "wt")!!.use { it.write(content.toByteArray()) }
+                    displayName(uri)
+                }
+                runOnUiThread {
+                    saved.fold({ result?.success(it) }, { result?.error("save", it.message, null) })
+                }
+            }.start()
+            return
+        }
         if (requestCode == REQUEST_PICK) {
             val result = pendingPick
             pendingPick = null
@@ -150,6 +183,12 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /** The file name the user chose in the Save dialog (for the "Saved" message). */
+    private fun displayName(uri: Uri): String =
+        contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            ?: (uri.lastPathSegment ?: "file")
+
     /** Copies a picked document into the cache (max 10 MB) so Dart can read it by path. */
     private fun copyToCache(uri: Uri): String {
         val out = File(cacheDir, "picked").apply { mkdirs() }.resolve("import")
@@ -172,5 +211,6 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val REQUEST_VPN = 1
         private const val REQUEST_PICK = 2
+        private const val REQUEST_SAVE = 3
     }
 }
