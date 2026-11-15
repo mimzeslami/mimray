@@ -4,7 +4,9 @@ import 'dart:io';
 import 'dart:math';
 
 final _home = Platform.environment['HOME'];
-final appDir = Platform.isWindows
+
+/// App data folder. On Android it's set at startup to the app's private files dir.
+String appDir = Platform.isWindows
     ? '${Platform.environment['APPDATA']}\\mimray'
     : Platform.isMacOS
     ? '$_home/Library/Application Support/mimray'
@@ -13,7 +15,9 @@ final appDir = Platform.isWindows
 /// Owner-only file permissions (files hold credentials). On Windows the
 /// per-user AppData folder already restricts access.
 Future<void> privateFile(String path) async {
-  if (!Platform.isWindows) await Process.run('chmod', ['600', path]);
+  if (!Platform.isWindows && !Platform.isAndroid) {
+    await Process.run('chmod', ['600', path]);
+  }
 }
 
 /// Gemini / Google AI endpoints. Google gates these by exit-IP country.
@@ -180,6 +184,18 @@ class Stats {
   );
 }
 
+/// A platform VPN (Android VpnService) that runs the config in-process instead
+/// of a separate core binary. Set by android_vpn.dart; null on desktop.
+typedef PlatformVpn = ({
+  Future<void> Function(
+    Map<String, dynamic> config,
+    void Function(int code) onExit,
+  )
+  start,
+  Future<void> Function() stop,
+});
+PlatformVpn? platformVpn;
+
 /// Root helper service (see helper/): starts the core without a password prompt.
 final helperSock = Platform.isMacOS
     ? '/var/run/mimray.sock'
@@ -241,8 +257,9 @@ Future<String?> setupHelper({bool uninstall = false}) async {
 class Core {
   Process? _p;
   Socket? _h; // helper session
+  bool _platform = false; // running in the platform VPN (Android)
   String? _api, _secret;
-  bool get running => _p != null || _h != null;
+  bool get running => _p != null || _h != null || _platform;
   String get log => '$appDir/core.log';
   String get _stop => '$appDir/stop';
 
@@ -273,6 +290,14 @@ class Core {
       ipv6: !Platform.isLinux || _linuxV6(),
     );
     _stopping = false;
+    final pv = platformVpn;
+    if (pv != null) {
+      _platform = true;
+      return pv.start(config, (c) {
+        _platform = false;
+        onExit(_stopping ? 0 : c);
+      });
+    }
     if (await helperVersion() != null) {
       return _startViaHelper(config, onExit);
     }
@@ -383,6 +408,7 @@ class Core {
 
   Future<void> stop() async {
     _stopping = true;
+    if (_platform) return platformVpn!.stop();
     final h = _h;
     if (h != null) {
       h.write('{"cmd":"stop"}\n');

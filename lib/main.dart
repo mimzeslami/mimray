@@ -1,95 +1,57 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
+import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:tray_manager/tray_manager.dart';
+import 'package:window_manager/window_manager.dart';
 
+import 'android_vpn.dart';
 import 'core.dart';
+import 'countries.dart';
 import 'links.dart';
 import 'native.dart';
+import 'updater.dart' as updater;
 
-const appVersion = '0.3.0';
+part 'ui/kit.dart';
+part 'ui/shared.dart';
+part 'ui/list.dart';
+part 'ui/desktop.dart';
+part 'ui/mobile.dart';
 
-// Palette
-const _bg = Color(0xFF0B1220);
-const _card = Color(0xFF151F35);
-const _card2 = Color(0xFF1B2742);
-const _line = Color(0xFF22304D);
-const _muted = Color(0xFF8A97B4);
-const _blue = Color(0xFF2F7BFF);
-const _green = Color(0xFF3DDC97);
-const _amber = Color(0xFFFFB547);
-const _red = Color(0xFFFF5D6C);
+const appVersion = '0.4.0';
 
-final _theme = ThemeData(
-  brightness: Brightness.dark,
-  useMaterial3: true,
-  scaffoldBackgroundColor: _bg,
-  visualDensity: VisualDensity.compact,
-  colorScheme: const ColorScheme.dark(
-    primary: _blue,
-    surface: _card,
-    error: _red,
-  ),
-  inputDecorationTheme: InputDecorationTheme(
-    filled: true,
-    fillColor: _bg,
-    isDense: true,
-    hintStyle: const TextStyle(color: _muted, fontSize: 13),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: _line),
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: _line),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: _blue, width: 1.5),
-    ),
-  ),
-  popupMenuTheme: PopupMenuThemeData(
-    color: _card2,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(14),
-      side: const BorderSide(color: _line),
-    ),
-    textStyle: const TextStyle(fontSize: 13, color: Colors.white),
-  ),
-  bottomSheetTheme: const BottomSheetThemeData(
-    backgroundColor: _card,
-    showDragHandle: true,
-    dragHandleColor: _line,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
-  ),
-  switchTheme: SwitchThemeData(
-    thumbColor: WidgetStateProperty.all(Colors.white),
-    trackColor: WidgetStateProperty.resolveWith(
-      (s) => s.contains(WidgetState.selected) ? _blue : _line,
-    ),
-    trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
-  ),
-  snackBarTheme: const SnackBarThemeData(
-    behavior: SnackBarBehavior.floating,
-    backgroundColor: _card2,
-    contentTextStyle: TextStyle(color: Colors.white),
-  ),
-  dividerColor: _line,
-);
+bool get _desktopOs =>
+    Platform.isMacOS || Platform.isWindows || Platform.isLinux;
 
-void main() => runApp(
-  MaterialApp(
-    title: 'mimray',
-    debugShowCheckedModeBanner: false,
-    theme: _theme,
-    home: const Home(),
-  ),
-);
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initAndroidVpn(); // no-op on desktop
+  if (_desktopOs) {
+    await windowManager.ensureInitialized();
+    // macOS and Linux are frameless + fixed natively (MainFlutterWindow.swift,
+    // my_application.cc); Windows goes through window_manager.
+    if (Platform.isWindows) {
+      await windowManager.setTitleBarStyle(
+        TitleBarStyle.hidden,
+        windowButtonVisibility: false,
+      );
+      await windowManager.setResizable(false);
+      await windowManager.setMaximizable(false);
+    }
+  }
+  runApp(
+    MaterialApp(
+      title: 'mimray',
+      debugShowCheckedModeBanner: false,
+      theme: appTheme,
+      home: const Home(),
+    ),
+  );
+}
 
 enum Phase { off, connecting, on }
 
@@ -114,12 +76,17 @@ class Sub {
 }
 
 class Home extends StatefulWidget {
-  const Home({super.key});
+  /// [mobile] picks the shell (default: Android/iOS). [demo] = state.json
+  /// content for tests/screenshots: nothing is read, saved, pinged or
+  /// started; `_`-prefixed keys fake runtime state (see `_applyDemo`).
+  const Home({super.key, this.mobile, this.demo});
+  final bool? mobile;
+  final Map<String, dynamic>? demo;
   @override
   State<Home> createState() => _HomeState();
 }
 
-class _HomeState extends State<Home> {
+class _HomeState extends State<Home> with TrayListener {
   final core = Core();
   final state = File('$appDir/state.json');
   List<Sub> subs = [];
@@ -129,6 +96,9 @@ class _HomeState extends State<Home> {
   Map<int, int?> pings = {};
   bool busy = false;
   String? helper; // helper version when installed (no password prompts)
+  updater.Update? update; // newer release available
+  double? updateProgress; // non-null while downloading
+  Timer? _updateTimer;
   String? msg;
 
   Phase phase = Phase.off;
@@ -138,21 +108,74 @@ class _HomeState extends State<Home> {
   final down = <double>[], up = <double>[]; // last 60s rates
   Timer? _tick;
 
+  // redesign state
+  Set<String> favorites = {}; // server ids (see _id)
+  List<String> recent = []; // last connected server ids, newest first
+  String tab = 'all'; // all | fav | recent
+  final expanded = <String>{}; // open country groups ('' = Other)
+  String query = '';
+  bool searching = false;
+  String view = 'main'; // desktop overlay: main | prefs
+  int nav = 0; // mobile tab: home | locations | settings
+  String logText = '';
+  final _rev = ValueNotifier(0); // bumps on every setState: keeps sheets live
+
+  bool get demo => widget.demo != null;
+  bool get mobile => widget.mobile ?? (Platform.isAndroid || Platform.isIOS);
+  String get os =>
+      widget.demo?['_os'] ??
+      (Platform.isMacOS
+          ? 'mac'
+          : Platform.isWindows
+          ? 'win'
+          : 'linux');
+  bool get helperAvailable => demo
+      ? helper != null || widget.demo!['_helperBundled'] == true
+      : helperBundled;
+
   List<Server> get servers => subs.isEmpty ? const [] : subs[cur].servers;
   bool get locked => phase != Phase.off;
 
   @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _rev.value++;
+    _syncTray();
+  }
+
+  /// setState for the UI parts (extensions can't call the protected one).
+  void rebuild([VoidCallback? fn]) => setState(fn ?? () {});
+
+  @override
   void initState() {
     super.initState();
+    if (widget.demo case final d?) {
+      _applyState(d);
+      _applyDemo(d);
+      return;
+    }
     _load();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
     _checkHelper();
+    if (!mobile && _desktopOs) _initTray();
+    // check shortly after launch, then every 6 hours (cancellable timers)
+    _updateTimer = Timer(const Duration(seconds: 5), () {
+      _checkUpdate();
+      _updateTimer = Timer.periodic(
+        const Duration(hours: 6),
+        (_) => _checkUpdate(),
+      );
+    });
   }
 
   @override
   void dispose() {
     _tick?.cancel();
-    core.stop();
+    _updateTimer?.cancel();
+    if (!demo) {
+      core.stop();
+      if (_trayReady) trayManager.removeListener(this);
+    }
     super.dispose();
   }
 
@@ -161,32 +184,76 @@ class _HomeState extends State<Home> {
   Future<void> _load() async {
     try {
       final j = jsonDecode(await state.readAsString());
-      setState(() {
-        if (j['subs'] != null) {
-          subs = [for (final s in j['subs']) Sub.fromJson(s)];
-        } else if (j['servers'] != null) {
-          // migrate v1 single-subscription state
-          subs = [
-            Sub.fromJson({...j, 'name': 'My VPN', 'src': j['sub'] ?? ''}),
-          ];
-        }
-        opt = Settings.fromJson(j['settings']);
-        cur = ((j['cur'] ?? 0) as int).clamp(
-          0,
-          subs.isEmpty ? 0 : subs.length - 1,
-        );
-        selected = j['sel'] ?? -1;
-        if (selected >= servers.length) selected = -1;
-      });
+      setState(() => _applyState(j));
       _pingAll();
       if (opt.autoConnect && servers.isNotEmpty) _toggle();
     } catch (_) {}
   }
 
+  void _applyState(Map j) {
+    if (j['subs'] != null) {
+      subs = [for (final s in j['subs']) Sub.fromJson(s)];
+    } else if (j['servers'] != null) {
+      // migrate v1 single-subscription state
+      subs = [
+        Sub.fromJson({...j, 'name': 'My VPN', 'src': j['sub'] ?? ''}),
+      ];
+    }
+    opt = Settings.fromJson(j['settings']);
+    cur = ((j['cur'] ?? 0) as int).clamp(0, subs.isEmpty ? 0 : subs.length - 1);
+    selected = j['sel'] ?? -1;
+    if (selected >= servers.length) selected = -1;
+    favorites = {...?(j['favorites'] as List?)?.cast<String>()};
+    recent = [...?(j['recent'] as List?)?.cast<String>()];
+    if (selected >= 0) expanded.add(_group(servers[selected]));
+  }
+
+  /// Test/screenshot state: `_phase`, `_pings`, `_stats` [up, down, upRate,
+  /// downRate, conns, active], `_ip`, `_uptime` (s), `_helper`, `_log`, `_tab`,
+  /// `_expanded`, `_os`, `_nav`, `_view`.
+  void _applyDemo(Map d) {
+    phase = Phase.values.byName(d['_phase'] ?? 'off');
+    pings = {
+      for (final (i, v) in ((d['_pings'] as List?) ?? const []).indexed) i: v,
+    };
+    helper = d['_helper'];
+    if (d['_update'] case final String v) {
+      update = updater.Update(v, '', '', '', '', '');
+    }
+    logText = d['_log'] ?? '';
+    tab = d['_tab'] ?? 'all';
+    nav = d['_nav'] ?? 0;
+    view = d['_view'] ?? 'main';
+    expanded.addAll(((d['_expanded'] as List?) ?? const []).cast<String>());
+    if (phase == Phase.on) {
+      since = DateTime.now().subtract(Duration(seconds: d['_uptime'] ?? 754));
+      ip = d['_ip'];
+      if (d['_stats'] case final List s) {
+        stats = Stats(s[0], s[1], s[2], s[3], s[4], s.length > 5 ? s[5] : null);
+      }
+      for (var i = 0; i < 60; i++) {
+        down.add(
+          4e6 * (.55 + .45 * math.sin(i * .37 + 1) * math.cos(i * .13 + 2)),
+        );
+        up.add(
+          4e5 * (.55 + .45 * math.sin(i * .37 + 4) * math.cos(i * .13 + 8)),
+        );
+      }
+    }
+  }
+
   Future<void> _save() async {
+    if (demo) return;
     await Directory(appDir).create(recursive: true);
     await state.writeAsString(
-      jsonEncode({'subs': subs, 'cur': cur, 'sel': selected, 'settings': opt}),
+      jsonEncode({
+        'subs': subs,
+        'cur': cur,
+        'sel': selected,
+        'settings': opt,
+        'favorites': favorites.toList(),
+        'recent': recent,
+      }),
     );
     await privateFile(state.path); // holds credentials
   }
@@ -198,13 +265,113 @@ class _HomeState extends State<Home> {
       ..showSnackBar(
         SnackBar(
           content: Text(t),
-          width: 360,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
         ),
       );
   }
+
+  // ---------- servers: ids, groups, favorites ----------
+
+  /// Stable server id for favorites/recent: survives renames and re-fetches.
+  // ponytail: two nodes on the same type+host+port share a star; add the path if that bites.
+  String _id(Server s) => '${s.outbound['type']}://${s.host}:${s.port}';
+
+  String _group(Server s) => _cc(s.name) ?? '';
+
+  bool _match(int i) {
+    if (query.isEmpty) return true;
+    final q = query.toLowerCase(), s = servers[i];
+    return s.name.toLowerCase().contains(q) ||
+        s.host.toLowerCase().contains(q) ||
+        countryName(_cc(s.name)).toLowerCase().contains(q);
+  }
+
+  /// Servers grouped by flag country, in list order; unflagged ('') last.
+  List<(String, List<int>)> get groups {
+    final m = <String, List<int>>{};
+    for (var i = 0; i < servers.length; i++) {
+      if (_match(i)) m.putIfAbsent(_group(servers[i]), () => []).add(i);
+    }
+    final other = m.remove('');
+    return [
+      for (final e in m.entries) (e.key, e.value),
+      ?(other == null ? null : ('', other)),
+    ];
+  }
+
+  /// Favorites / Recent tab rows (current subscription).
+  List<int> get flat {
+    final ids = [for (final s in servers) _id(s)];
+    final l = tab == 'fav'
+        ? [
+            for (var i = 0; i < servers.length; i++)
+              if (favorites.contains(ids[i])) i,
+          ]
+        : [
+            for (final r in recent) ids.indexOf(r),
+          ].where((i) => i >= 0).toList();
+    return l.where(_match).toList();
+  }
+
+  bool isFav(int i) => favorites.contains(_id(servers[i]));
+
+  void toggleFav(int i) {
+    final id = _id(servers[i]);
+    setState(
+      () => favorites.contains(id) ? favorites.remove(id) : favorites.add(id),
+    );
+    _save();
+  }
+
+  void pick(int i) {
+    if (locked) return;
+    setState(() {
+      selected = i;
+      if (mobile) nav = 0;
+    });
+    _save();
+  }
+
+  void toggleGroup(String cc) => setState(
+    () => expanded.contains(cc) ? expanded.remove(cc) : expanded.add(cc),
+  );
+
+  /// Server in use: the selected one, or the one Auto picked once connected.
+  int? get activeIndex {
+    if (servers.isEmpty) return null;
+    if (selected >= 0) return selected;
+    final a = phase == Phase.on ? stats?.active : null;
+    return a != null && a < servers.length ? a : null;
+  }
+
+  String get locTitle {
+    if (servers.isEmpty) return 'No servers yet';
+    if (selected >= 0) return _clean(servers[selected].name);
+    final a = activeIndex;
+    return a == null
+        ? 'Auto · best server'
+        : 'Auto · ${_clean(servers[a].name)}';
+  }
+
+  String get locSub => switch (phase) {
+    Phase.on when ip == null => 'Checking exit IP…',
+    Phase.on => [
+      ip!['ip'],
+      [
+        ip!['city'],
+        if (ip!['country'] is String) countryName(ip!['country']),
+      ].whereType<String>().join(', '),
+    ].whereType<String>().where((e) => e.isNotEmpty).join(' · '),
+    Phase.connecting => 'Waiting for permission…',
+    Phase.off =>
+      servers.isEmpty
+          ? 'Add a server to start'
+          : mobile
+          ? 'Tap to connect'
+          : 'Not connected',
+  };
 
   // ---------- subscriptions & import ----------
 
@@ -291,6 +458,12 @@ class _HomeState extends State<Home> {
     _pingAll();
   }
 
+  /// Switch subscription (not while connected).
+  void selectSub(int i) {
+    if (locked || i == cur) return;
+    _select(i);
+  }
+
   Future<void> _addMenu(String a) async {
     switch (a) {
       case 'clip':
@@ -333,64 +506,53 @@ class _HomeState extends State<Home> {
     }
   }
 
+  /// New https subscription from the Add sheet / first-run.
+  Future<void> _addSub(String url, [String name = '']) async {
+    url = url.trim();
+    if (url.isEmpty) return;
+    final host = Uri.tryParse(url)?.host ?? '';
+    final n = name.trim().isNotEmpty
+        ? name.trim()
+        : (host.isNotEmpty ? host : 'Subscription');
+    await _run(() async {
+      final sub = Sub(n, url);
+      await _refresh(sub);
+      subs.add(sub);
+      _select(subs.length - 1);
+      _toast('${sub.servers.length} servers loaded');
+    });
+  }
+
   Future<void> _editSub([int? i]) async {
     final s = i == null ? null : subs[i];
     final name = TextEditingController(text: s?.name ?? '');
     final src = TextEditingController(text: s?.src ?? '');
     final r = await _sheet<String>(
-      (c) => _sheetBody(
+      (c) => _formSheet(
         c,
-        title: s == null ? 'Add subscription' : 'Edit subscription',
-        children: [
-          TextField(
-            controller: name,
-            decoration: const InputDecoration(hintText: 'Name (optional)'),
-          ),
-          if (s == null || !s.local) ...[
-            const SizedBox(height: 10),
-            TextField(
-              controller: src,
+        title: s == null
+            ? 'Add subscription'
+            : s.local
+            ? 'Rename list'
+            : 'Edit subscription',
+        fields: [
+          _field(name, 'Name (optional)'),
+          if (s == null || !s.local)
+            _field(
+              src,
+              'https://… subscription URL',
               autofocus: s == null,
-              minLines: 2,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'https://… subscription URL',
-                prefixIcon: Icon(Icons.link_rounded, size: 18),
-              ),
+              mono: true,
+              lines: 2,
             ),
-          ],
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              if (s != null)
-                TextButton.icon(
-                  onPressed: () => Navigator.pop(c, 'delete'),
-                  icon: const Icon(Icons.delete_outline, color: _red, size: 18),
-                  label: const Text('Delete', style: TextStyle(color: _red)),
-                ),
-              const Spacer(),
-              TextButton(
-                onPressed: () => Navigator.pop(c),
-                child: const Text('Cancel'),
-              ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: () => Navigator.pop(c, 'ok'),
-                child: Text(s == null ? 'Add' : 'Save'),
-              ),
-            ],
-          ),
         ],
+        ok: s == null ? 'Add' : 'Save',
       ),
     );
-    if (r == 'delete' && i != null) {
-      subs.removeAt(i);
-      _select(0);
-      return;
-    }
     if (r != 'ok') return;
     final url = src.text.trim();
-    if (s != null && s.local) {
+    if (s == null) return _addSub(url, name.text);
+    if (s.local) {
       s.name = name.text.trim().isEmpty ? s.name : name.text.trim();
       setState(() {});
       return _save();
@@ -403,22 +565,17 @@ class _HomeState extends State<Home> {
     await _run(() async {
       final sub = Sub(n, url);
       await _refresh(sub);
-      if (s == null) {
-        subs.add(sub);
-        _select(subs.length - 1);
-      } else {
-        s
-          ..name = n
-          ..src = url
-          ..servers = sub.servers
-          ..usage = sub.usage;
-        _select(i!);
-      }
+      s
+        ..name = n
+        ..src = url
+        ..servers = sub.servers
+        ..usage = sub.usage;
+      _select(i!);
       _toast('${sub.servers.length} servers loaded');
     });
   }
 
-  // ---------- export ----------
+  // ---------- export / actions ----------
 
   String _serverExport(Server s) => s.link ?? jsonEncode(s.outbound);
 
@@ -438,17 +595,9 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Future<void> _subMenu(int i) async {
+  /// Subscription sheet grid actions.
+  Future<void> _subAction(int i, String a) async {
     final s = subs[i];
-    final a = await _actions(s.name, [
-      ('edit', Icons.edit_rounded, s.local ? 'Rename' : 'Edit'),
-      if (!s.local) ('copyurl', Icons.link_rounded, 'Copy subscription URL'),
-      if (!s.local) ('qrurl', Icons.qr_code_rounded, 'Show subscription QR'),
-      ('copyall', Icons.copy_all_rounded, 'Copy all server links'),
-      ('file', Icons.save_alt_rounded, 'Export servers to file'),
-      if (!s.local) ('update', Icons.refresh_rounded, 'Update'),
-      ('delete', Icons.delete_outline, 'Delete'),
-    ]);
     switch (a) {
       case 'edit':
         return _editSub(i);
@@ -474,19 +623,12 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Future<void> _serverMenu(int i) async {
+  /// Server sheet actions.
+  Future<void> _serverAction(int i, String a) async {
     final s = servers[i];
-    final a = await _actions(_clean(s.name), [
-      ('copy', Icons.copy_rounded, s.link != null ? 'Copy link' : 'Copy JSON'),
-      ('qr', Icons.qr_code_rounded, 'Show QR code'),
-      ('file', Icons.save_alt_rounded, 'Export to file'),
-      if (!locked) ('delete', Icons.delete_outline, 'Delete server'),
-    ]);
     switch (a) {
       case 'copy':
         return _copy(_serverExport(s), s.link != null ? 'Link' : 'JSON');
-      case 'qr':
-        return _showQr(_clean(s.name), _serverExport(s));
       case 'file':
         return _saveFile('${_slug(_clean(s.name))}.txt', _serverExport(s));
       case 'delete':
@@ -500,47 +642,10 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Future<void> _showQr(String title, String data) async {
-    List<List<bool>> m;
-    try {
-      m = qrMatrix(data);
-    } catch (_) {
-      return _toast('Too long for a QR code — use Export to file');
-    }
-    await _sheet(
-      (c) => _sheetBody(
-        c,
-        title: title,
-        children: [
-          Center(
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: SizedBox.square(
-                dimension: 240,
-                child: CustomPaint(painter: _QrPainter(m)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Center(
-            child: TextButton.icon(
-              onPressed: () => _copy(data, 'Copied'),
-              icon: const Icon(Icons.copy_rounded, size: 16),
-              label: const Text('Copy text'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ---------- servers ----------
 
   void _pingAll() {
+    if (demo) return;
     setState(() => pings = {});
     final list = servers;
     for (var i = 0; i < list.length; i++) {
@@ -580,8 +685,20 @@ class _HomeState extends State<Home> {
         since = DateTime.now();
         msg = null;
         exitIp().then((v) => mounted ? setState(() => ip = v) : null);
+        _remember(selected >= 0 ? selected : s.active);
       }
     });
+  }
+
+  /// Recent = last connected servers (max 5).
+  void _remember(int? i) {
+    if (i == null || i < 0 || i >= servers.length) return;
+    final id = _id(servers[i]);
+    recent
+      ..remove(id)
+      ..insert(0, id);
+    if (recent.length > 5) recent.removeRange(5, recent.length);
+    _save();
   }
 
   void _push(List<double> l, double v) {
@@ -590,6 +707,7 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> _toggle() async {
+    if (demo) return;
     if (phase != Phase.off) return core.stop();
     if (servers.isEmpty) return;
     setState(() {
@@ -623,105 +741,107 @@ class _HomeState extends State<Home> {
     }
   }
 
-  // ---------- sheets ----------
+  // ---------- helper / log ----------
 
-  Future<T?> _sheet<T>(Widget Function(BuildContext) b) =>
-      showModalBottomSheet<T>(
-        context: context,
-        isScrollControlled: true,
-        constraints: const BoxConstraints(maxWidth: 460),
-        builder: (c) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(c).bottom),
-          child: b(c),
-        ),
+  Future<void> _checkUpdate({bool manual = false}) async {
+    try {
+      final u = await updater.check(appVersion);
+      if (!mounted) return;
+      setState(() => update = u);
+      if (manual && u == null) {
+        _toast('mimray $appVersion is the latest version');
+      }
+    } catch (e) {
+      if (manual) _toast('Update check failed: $e');
+    }
+  }
+
+  Future<void> _installUpdate() async {
+    final u = update;
+    if (u == null || updateProgress != null) return;
+    setState(() => updateProgress = 0);
+    try {
+      final file = await updater.download(
+        u,
+        (p) => mounted ? setState(() => updateProgress = p) : null,
       );
+      if (Platform.isAndroid) {
+        await updater.install(file); // system installer takes over
+        setState(() => updateProgress = null);
+        return;
+      }
+      if (await updater.install(file)) {
+        _toast('Installing mimray ${u.version}… the app will reopen');
+        await core.stop(); // the tunnel must not outlive the old app
+        await Future.delayed(const Duration(seconds: 2));
+        exit(0);
+      }
+      // app folder not writable (e.g. installed by another user): manual install
+      setState(() => updateProgress = null);
+      _toast('Opened the update — install it like a normal download');
+      await reveal(file);
+    } catch (e) {
+      setState(() => updateProgress = null);
+      _toast('Update failed: $e');
+    }
+  }
 
-  Widget _sheetBody(
-    BuildContext c, {
-    required String title,
-    required List<Widget> children,
-  }) => SafeArea(
-    child: SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 16),
-          ...children,
-        ],
+  /// "mimray X is available" + Update button (download progress while running).
+  Widget _updateBanner({bool mobile = false}) {
+    final u = update;
+    if (u == null) return const SizedBox.shrink();
+    final p = updateProgress;
+    return Container(
+      margin: mobile ? EdgeInsets.zero : const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      padding: EdgeInsets.fromLTRB(mobile ? 16 : 12, 9, 6, 9),
+      decoration: BoxDecoration(
+        color: _selBg,
+        borderRadius: BorderRadius.circular(mobile ? 16 : 10),
+        border: Border.all(color: _blue.withValues(alpha: .45)),
       ),
-    ),
-  );
-
-  Future<String?> _actions(
-    String title,
-    List<(String, IconData, String)> items,
-  ) => _sheet<String>(
-    (c) => _sheetBody(
-      c,
-      title: title,
-      children: [
-        for (final (id, icon, label) in items)
-          ListTile(
-            dense: true,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            leading: Icon(icon, size: 20, color: id == 'delete' ? _red : null),
-            title: Text(
-              label,
-              style: TextStyle(color: id == 'delete' ? _red : null),
-            ),
-            onTap: () => Navigator.pop(c, id),
-          ),
-      ],
-    ),
-  );
-
-  Future<String?> _textSheet(String title, String hint, {int lines = 1}) {
-    final t = TextEditingController();
-    return _sheet<String>(
-      (c) => _sheetBody(
-        c,
-        title: title,
+      child: Row(
         children: [
-          TextField(
-            controller: t,
-            autofocus: true,
-            minLines: lines,
-            maxLines: lines,
-            style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-            decoration: InputDecoration(hintText: hint),
+          Icon(
+            Icons.system_update_alt_rounded,
+            size: mobile ? 20 : 16,
+            color: _blueLight,
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              TextButton.icon(
-                onPressed: () async {
-                  final d = await Clipboard.getData('text/plain');
-                  t.text = d?.text ?? '';
-                },
-                icon: const Icon(Icons.content_paste_rounded, size: 16),
-                label: const Text('Paste'),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'mimray ${u.version} is available',
+                  style: _t(mobile ? 14 : 12, FontWeight.w600),
+                ),
+                if (p != null) ...[
+                  const SizedBox(height: 6),
+                  LinearProgressIndicator(
+                    value: p == 0 ? null : p,
+                    minHeight: 3,
+                    color: _blue,
+                    backgroundColor: _line,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ] else
+                  Text(
+                    'You have $appVersion',
+                    style: _t(mobile ? 12 : 11, FontWeight.w400, _muted),
+                  ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: p == null ? _installUpdate : null,
+            child: Text(
+              p == null ? 'Update' : '${(p * 100).round()}%',
+              style: _t(
+                mobile ? 14 : 12,
+                FontWeight.w700,
+                p == null ? _blueLight : _muted,
               ),
-              const Spacer(),
-              TextButton(
-                onPressed: () => Navigator.pop(c),
-                child: const Text('Cancel'),
-              ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: () => Navigator.pop(c, t.text),
-                child: const Text('Import'),
-              ),
-            ],
+            ),
           ),
         ],
       ),
@@ -733,13 +853,9 @@ class _HomeState extends State<Home> {
     if (mounted) setState(() => helper = v);
   }
 
-  Future<void> _helperAction(
-    bool uninstall,
-    void Function(VoidCallback) set,
-  ) async {
+  Future<void> _helperAction(bool uninstall) async {
     final err = await setupHelper(uninstall: uninstall);
     await _checkHelper();
-    set(() {});
     _toast(
       err != null
           ? 'Helper: ${err.split('\n').last}'
@@ -749,947 +865,121 @@ class _HomeState extends State<Home> {
     );
   }
 
-  Future<void> _settings() async {
-    await _sheet(
-      (c) => StatefulBuilder(
-        builder: (c, set) {
-          void upd(VoidCallback f) {
-            set(f);
-            setState(() {});
-            _save();
-          }
-
-          Widget sw(String t, String sub, bool v, void Function(bool) f) =>
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(t, style: const TextStyle(fontSize: 14)),
-                subtitle: Text(
-                  sub,
-                  style: const TextStyle(fontSize: 11, color: _muted),
-                ),
-                value: v,
-                onChanged: (x) => upd(() => f(x)),
-              );
-
-          return _sheetBody(
-            c,
-            title: 'Settings',
-            children: [
-              if (locked)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    'Changes apply on next connect.',
-                    style: TextStyle(color: _amber, fontSize: 12),
-                  ),
-                ),
-              _section('Connection'),
-              sw(
-                'Connect on launch',
-                'Start the tunnel when mimray opens',
-                opt.autoConnect,
-                (x) => opt.autoConnect = x,
-              ),
-              sw(
-                'Smart Gemini routing',
-                'Send Gemini via a supported country when needed',
-                opt.smartAi,
-                (x) => opt.smartAi = x,
-              ),
-              sw(
-                'Block QUIC',
-                'Forces TCP — more reliable through proxies',
-                opt.blockQuic,
-                (x) => opt.blockQuic = x,
-              ),
-              sw(
-                'Bypass LAN',
-                'Local network (printers, NAS, router) stays direct',
-                opt.bypassLan,
-                (x) => opt.bypassLan = x,
-              ),
-              const SizedBox(height: 8),
-              _section('Secure DNS (DoH, through the tunnel)'),
-              const SizedBox(height: 6),
-              SegmentedButton<String>(
-                showSelectedIcon: false,
-                segments: [
-                  for (final e in dnsChoices.entries)
-                    ButtonSegment(value: e.key, label: Text(e.value)),
-                ],
-                selected: {opt.dns},
-                onSelectionChanged: (v) => upd(() => opt.dns = v.first),
-              ),
-              const SizedBox(height: 18),
-              if (helperBundled) ...[
-                _section('Password prompt'),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    helper != null
-                        ? Icons.verified_user_rounded
-                        : Icons.key_rounded,
-                    color: helper != null ? _green : _amber,
-                  ),
-                  title: Text(
-                    helper != null
-                        ? 'Background helper installed'
-                        : 'Asked for password on every connect',
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                  subtitle: Text(
-                    helper != null
-                        ? 'Connects without a password'
-                        : 'Install the helper once to stop the prompts',
-                    style: const TextStyle(fontSize: 11, color: _muted),
-                  ),
-                  trailing: helper != null
-                      ? TextButton(
-                          onPressed: locked
-                              ? null
-                              : () => _helperAction(true, set),
-                          child: const Text('Remove'),
-                        )
-                      : FilledButton(
-                          onPressed: () => _helperAction(false, set),
-                          child: const Text('Install'),
-                        ),
-                ),
-                const SizedBox(height: 8),
-              ],
-              _section('About'),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                leading: const Icon(Icons.shield_rounded, color: _blue),
-                title: const Text('mimray $appVersion'),
-                subtitle: const Text(
-                  'sing-box core · github.com/mimzeslami/mimray',
-                  style: TextStyle(color: _muted, fontSize: 11),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
+  void setOpt(VoidCallback f) {
+    setState(f);
+    _save();
   }
 
-  Widget _section(String t) => Padding(
-    padding: const EdgeInsets.only(top: 4, bottom: 2),
-    child: Text(
-      t.toUpperCase(),
-      style: const TextStyle(
-        fontSize: 11,
-        color: _muted,
-        letterSpacing: 1,
-        fontWeight: FontWeight.w600,
-      ),
-    ),
-  );
-
-  Future<void> _showLog() async {
-    final l = await core.logTail(200);
-    await _sheet(
-      (c) => _sheetBody(
-        c,
-        title: 'Core log',
-        children: [
-          Container(
-            height: 320,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: _bg,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _line),
-            ),
-            child: SingleChildScrollView(
-              reverse: true,
-              child: SelectableText(
-                l.isEmpty ? 'No log yet.' : l,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontFamily: 'monospace',
-                  color: _muted,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () => reveal(core.log),
-              icon: const Icon(Icons.folder_open_rounded, size: 16),
-              label: const Text('Show file'),
-            ),
-          ),
-        ],
-      ),
-    );
+  Future<void> _openLog() async {
+    if (!demo) logText = await core.logTail(200);
+    await _logSheet();
   }
+
+  // ---------- tray / window ----------
+
+  bool _trayReady = false;
+  String _traySig = '';
+
+  Future<void> _initTray() async {
+    try {
+      trayManager.addListener(this);
+      await trayManager.setIcon(
+        Platform.isWindows
+            ? 'assets/tray/tray.ico'
+            : Platform.isMacOS
+            ? 'assets/tray/tray_mac.png'
+            : 'assets/tray/tray.png',
+        isTemplate: Platform.isMacOS,
+      );
+      if (!Platform.isLinux) await trayManager.setToolTip('mimray');
+      _trayReady = true;
+      _syncTray();
+    } catch (e) {
+      debugPrint('tray unavailable: $e'); // e.g. GNOME without AppIndicator
+    }
+  }
+
+  /// Native tray menu: status, location, connect, favorites, open, quit.
+  void _syncTray() {
+    if (!_trayReady) return;
+    final favs = [
+      for (var i = 0; i < servers.length; i++)
+        if (isFav(i)) i,
+    ];
+    final status = switch (phase) {
+      Phase.on => 'Connected',
+      Phase.connecting => 'Connecting…',
+      Phase.off => 'Disconnected',
+    };
+    final items = [
+      MenuItem(label: status, disabled: true),
+      MenuItem(label: locTitle, disabled: true),
+      MenuItem(
+        key: 'toggle',
+        label: phase == Phase.off ? 'Connect' : 'Disconnect',
+        disabled: servers.isEmpty,
+      ),
+      MenuItem.separator(),
+      if (favs.isNotEmpty) ...[
+        MenuItem(label: 'Favorites', disabled: true),
+        for (final i in favs)
+          MenuItem.checkbox(
+            key: 'fav:$i',
+            label: _clean(servers[i].name),
+            checked: selected == i,
+            disabled: locked,
+          ),
+        MenuItem.separator(),
+      ],
+      MenuItem(key: 'open', label: 'Open mimray'),
+      MenuItem(key: 'quit', label: 'Quit'),
+    ];
+    final sig = items
+        .map((e) => '${e.key}${e.label}${e.disabled}${e.checked}')
+        .join('|');
+    if (sig == _traySig) return;
+    _traySig = sig;
+    trayManager.setContextMenu(Menu(items: items));
+  }
+
+  @override
+  void onTrayIconMouseDown() =>
+      Platform.isWindows ? _showWindow() : trayManager.popUpContextMenu();
+
+  @override
+  void onTrayIconRightMouseDown() => trayManager.popUpContextMenu();
+
+  @override
+  void onTrayMenuItemClick(MenuItem m) {
+    final k = m.key ?? '';
+    if (k == 'toggle') _toggle();
+    if (k == 'open') _showWindow();
+    if (k == 'quit') _quit();
+    if (k.startsWith('fav:') && !locked) {
+      pick(int.parse(k.substring(4)));
+      _toggle(); // quick connect
+    }
+  }
+
+  Future<void> _showWindow() async {
+    await windowManager.show();
+    await windowManager.focus();
+  }
+
+  Future<void> _quit() async {
+    if (phase != Phase.off) await core.stop();
+    exit(0); // the root core watchdog / helper session stop with us
+  }
+
+  void minimizeWindow() => demo ? null : windowManager.minimize();
+  void closeWindow() => demo ? null : windowManager.close();
+  void dragWindow() => demo ? null : windowManager.startDragging();
 
   // ---------- UI ----------
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: Column(
-              children: [
-                _hero(),
-                _subsBar(),
-                Expanded(child: _serverList()),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _hero() {
-    final on = phase == Phase.on;
-    final s = stats;
-    final int? active = servers.isEmpty
-        ? null
-        : selected >= 0
-        ? selected
-        : (s?.active ?? -1);
-    final title = active == null
-        ? 'No servers yet'
-        : active < 0
-        ? 'Auto · best server'
-        : _clean(servers[active].name);
-    final flag = active != null && active >= 0
-        ? _flag(_cc(servers[active].name))
-        : '⚡';
-    final (c1, c2, label, lc) = switch (phase) {
-      Phase.on => (
-        const Color(0xFF1C5BFF),
-        const Color(0xFF0E2D7A),
-        'ON',
-        _green,
-      ),
-      Phase.connecting => (
-        const Color(0xFF6B4E17),
-        const Color(0xFF2A2214),
-        'CONNECTING',
-        _amber,
-      ),
-      Phase.off => (
-        const Color(0xFF1B2540),
-        const Color(0xFF111A2E),
-        'OFF',
-        _muted,
-      ),
-    };
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 400),
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-      padding: const EdgeInsets.fromLTRB(10, 8, 16, 14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(22),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [c1, c2],
-        ),
-        border: Border.all(color: Colors.white.withValues(alpha: .06)),
-        boxShadow: [
-          if (on)
-            BoxShadow(color: _blue.withValues(alpha: .35), blurRadius: 28),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              PopupMenuButton<String>(
-                tooltip: 'Menu',
-                icon: const Icon(Icons.menu_rounded, size: 20),
-                onSelected: (a) => switch (a) {
-                  'settings' => _settings(),
-                  'update' => _updateAll(),
-                  'log' => _showLog(),
-                  _ => null,
-                },
-                itemBuilder: (_) => [
-                  _mi('settings', Icons.tune_rounded, 'Settings'),
-                  _mi(
-                    'update',
-                    Icons.refresh_rounded,
-                    'Update all subscriptions',
-                  ),
-                  _mi('log', Icons.receipt_long_rounded, 'Core log'),
-                ],
-              ),
-              const Text(
-                'mimray',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: .4,
-                  fontSize: 15,
-                ),
-              ),
-              const SizedBox(width: 10),
-              _pill(label, lc),
-              const Spacer(),
-              _Switch(
-                value: phase != Phase.off,
-                busy: phase == Phase.connecting,
-                onTap: servers.isEmpty ? null : _toggle,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.only(left: 6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    SizedBox(
-                      width: 34,
-                      child: Text(flag, style: const TextStyle(fontSize: 24)),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _subtitle(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (since != null)
-                      Text(
-                        _dur(DateTime.now().difference(since!)),
-                        style: const TextStyle(
-                          fontFeatures: [FontFeature.tabularFigures()],
-                          color: Colors.white70,
-                          fontSize: 12,
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    _stat(
-                      Icons.south_rounded,
-                      '${fmtBytes(s?.downRate ?? 0)}/s',
-                      fmtBytes(s?.down ?? 0),
-                    ),
-                    _stat(
-                      Icons.north_rounded,
-                      '${fmtBytes(s?.upRate ?? 0)}/s',
-                      fmtBytes(s?.up ?? 0),
-                    ),
-                    _stat(Icons.hub_rounded, '${s?.conns ?? 0}', 'connections'),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 28,
-                  width: double.infinity,
-                  child: CustomPaint(painter: _Spark(down, up)),
-                ),
-                if (msg != null) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    msg!,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFFFFB3BA),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  PopupMenuItem<String> _mi(String v, IconData i, String t) => PopupMenuItem(
-    value: v,
-    height: 40,
-    child: Row(
-      children: [
-        Icon(i, size: 18, color: _muted),
-        const SizedBox(width: 12),
-        Text(t),
-      ],
-    ),
-  );
-
-  String _subtitle() => switch (phase) {
-    Phase.on when ip == null => 'Checking exit IP…',
-    Phase.on => [
-      ip!['ip'],
-      [ip!['city'], ip!['country']].whereType<String>().join(', '),
-    ].whereType<String>().where((e) => e.isNotEmpty).join(' · '),
-    Phase.connecting => 'Waiting for permission…',
-    Phase.off => servers.isEmpty ? 'Add a server to start' : 'Not connected',
-  };
-
-  Widget _stat(IconData i, String big, String small) => Expanded(
-    child: Row(
-      children: [
-        Icon(i, size: 14, color: Colors.white60),
-        const SizedBox(width: 4),
-        Flexible(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                big,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-              ),
-              Text(
-                small,
-                maxLines: 1,
-                style: const TextStyle(color: Colors.white54, fontSize: 10),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _addButton() => PopupMenuButton<String>(
-    tooltip: 'Add',
-    enabled: !locked && !busy,
-    onSelected: _addMenu,
-    itemBuilder: (_) => [
-      _mi('clip', Icons.content_paste_rounded, 'Import from clipboard'),
-      _mi('screen', Icons.qr_code_scanner_rounded, 'Scan QR on screen'),
-      _mi('qrfile', Icons.image_outlined, 'Import QR image…'),
-      _mi('file', Icons.file_open_outlined, 'Import config file…'),
-      const PopupMenuDivider(),
-      _mi('sub', Icons.rss_feed_rounded, 'Add subscription'),
-      _mi('manual', Icons.edit_note_rounded, 'Add servers manually'),
-      const PopupMenuDivider(),
-      _mi('update', Icons.refresh_rounded, 'Update all subscriptions'),
-    ],
-    child: Container(
-      height: 30,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: _blue.withValues(alpha: locked ? .3 : 1),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          busy
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : const Icon(Icons.add_rounded, size: 18),
-          const SizedBox(width: 4),
-          const Text(
-            'Add',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-          ),
-        ],
-      ),
-    ),
-  );
-
-  Widget _subsBar() {
-    final u = subs.isEmpty ? const <String, int>{} : subs[cur].usage;
-    final total = u['total'] ?? 0;
-    final used = (u['upload'] ?? 0) + (u['download'] ?? 0);
-    final exp = u['expire'] ?? 0;
-    final days = exp > 0
-        ? DateTime.fromMillisecondsSinceEpoch(
-            exp * 1000,
-          ).difference(DateTime.now()).inDays
-        : null;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Column(
-        children: [
-          SizedBox(
-            height: 36,
-            child: Row(
-              children: [
-                Expanded(
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: [
-                      for (var i = 0; i < subs.length; i++)
-                        _chip(
-                          subs[i].name,
-                          icon: subs[i].local
-                              ? Icons.folder_rounded
-                              : Icons.rss_feed_rounded,
-                          selected: i == cur,
-                          onTap: locked ? null : () => _select(i),
-                          onMenu: () => _subMenu(i),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 6),
-                IconButton(
-                  tooltip: 'Ping all',
-                  onPressed: _pingAll,
-                  iconSize: 18,
-                  icon: const Icon(Icons.speed_rounded),
-                ),
-                _addButton(),
-              ],
-            ),
-          ),
-          if (total > 0) ...[
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Text(
-                  '${fmtBytes(used)} / ${fmtBytes(total)}',
-                  style: const TextStyle(fontSize: 11, color: _muted),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: LinearProgressIndicator(
-                    value: (used / total).clamp(0, 1),
-                    minHeight: 4,
-                    color: used / total > .9 ? _red : _blue,
-                    backgroundColor: _line,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                if (days != null) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    days < 0 ? 'expired' : '${days}d left',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: days < 3 ? _red : _muted,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ],
-          const SizedBox(height: 8),
-        ],
-      ),
-    );
-  }
-
-  /// Pill chip; ⋯ opens its menu (also right-click / long-press).
-  Widget _chip(
-    String text, {
-    required IconData icon,
-    bool selected = false,
-    VoidCallback? onTap,
-    VoidCallback? onMenu,
-  }) => Padding(
-    padding: const EdgeInsets.only(right: 6, top: 3, bottom: 3),
-    child: Material(
-      color: selected ? _blue.withValues(alpha: .18) : _card,
-      shape: StadiumBorder(side: BorderSide(color: selected ? _blue : _line)),
-      child: InkWell(
-        customBorder: const StadiumBorder(),
-        onTap: onTap,
-        onLongPress: onMenu,
-        onSecondaryTap: onMenu,
-        child: Padding(
-          padding: const EdgeInsets.only(left: 10, right: 2),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 13, color: selected ? _blue : _muted),
-              const SizedBox(width: 6),
-              Text(
-                text,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-              InkWell(
-                customBorder: const CircleBorder(),
-                onTap: onMenu,
-                child: const Padding(
-                  padding: EdgeInsets.all(4),
-                  child: Icon(Icons.more_vert_rounded, size: 15, color: _muted),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-
-  Widget _serverList() {
-    if (subs.isEmpty || servers.isEmpty) {
-      return Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.public_rounded, size: 52, color: _line),
-              const SizedBox(height: 12),
-              const Text(
-                'Add a subscription, paste a link\nor scan a QR code to get started',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: _muted, height: 1.4),
-              ),
-              const SizedBox(height: 18),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                alignment: WrapAlignment.center,
-                children: [
-                  FilledButton.icon(
-                    onPressed: busy ? null : () => _addMenu('sub'),
-                    icon: const Icon(Icons.rss_feed_rounded, size: 18),
-                    label: const Text('Subscription'),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: busy ? null : () => _addMenu('clip'),
-                    icon: const Icon(Icons.content_paste_rounded, size: 18),
-                    label: const Text('From clipboard'),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: busy ? null : () => _addMenu('screen'),
-                    icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
-                    label: const Text('Scan QR'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    final best = pings.values.whereType<int>().fold<int?>(
-      null,
-      (a, b) => a == null || b < a ? b : a,
-    );
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      decoration: BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _line),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        itemCount: servers.length + 1,
-        separatorBuilder: (_, _) =>
-            const Divider(height: 1, indent: 58, color: _line),
-        itemBuilder: (_, k) {
-          final i = k - 1; // row 0 = Auto
-          final sel = i == selected;
-          final s = i < 0 ? null : servers[i];
-          final ms = i < 0 ? best : pings[i];
-          final live = phase == Phase.on && selected < 0 && stats?.active == i;
-          return Material(
-            color: sel ? _blue.withValues(alpha: .14) : Colors.transparent,
-            child: InkWell(
-              onTap: locked
-                  ? null
-                  : () {
-                      setState(() => selected = i);
-                      _save();
-                    },
-              onLongPress: s == null ? null : () => _serverMenu(i),
-              onSecondaryTap: s == null ? null : () => _serverMenu(i),
-              child: Opacity(
-                opacity: locked && !sel && !live ? .45 : 1,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 9, 4, 9),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 32,
-                        child: Text(
-                          s == null ? '⚡' : _flag(_cc(s.name)),
-                          style: const TextStyle(fontSize: 20),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              s == null ? 'Auto' : _clean(s.name),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: sel
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 1),
-                            Text(
-                              s == null
-                                  ? 'Fastest working server, switches by itself'
-                                  : '${_proto(s.outbound['type'])} · ${s.host}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: _muted,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (live) ...[
-                        const Icon(Icons.circle, size: 8, color: _green),
-                        const SizedBox(width: 6),
-                      ],
-                      _Bars(ms: ms, pending: i >= 0 && !pings.containsKey(i)),
-                      SizedBox(
-                        width: 36,
-                        child: s == null
-                            ? (sel
-                                  ? const Icon(
-                                      Icons.check_circle,
-                                      size: 18,
-                                      color: _blue,
-                                    )
-                                  : null)
-                            : IconButton(
-                                tooltip: 'More',
-                                iconSize: 18,
-                                padding: EdgeInsets.zero,
-                                onPressed: () => _serverMenu(i),
-                                icon: Icon(
-                                  sel
-                                      ? Icons.check_circle
-                                      : Icons.more_vert_rounded,
-                                  color: sel ? _blue : _muted,
-                                ),
-                              ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _pill(String t, Color c) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-    decoration: BoxDecoration(
-      color: c.withValues(alpha: .18),
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: c.withValues(alpha: .6)),
-    ),
-    child: Text(
-      t,
-      style: TextStyle(color: c, fontSize: 10, fontWeight: FontWeight.w700),
-    ),
-  );
-}
-
-/// Big pill on/off switch.
-class _Switch extends StatelessWidget {
-  final bool value, busy;
-  final VoidCallback? onTap;
-  const _Switch({required this.value, required this.busy, this.onTap});
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: onTap,
-    child: MouseRegion(
-      cursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        width: 64,
-        height: 34,
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          color: value ? (busy ? _amber : _green) : Colors.white24,
-        ),
-        child: AnimatedAlign(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOutBack,
-          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            width: 28,
-            height: 28,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-            ),
-            child: busy
-                ? const Padding(
-                    padding: EdgeInsets.all(7),
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: _amber,
-                    ),
-                  )
-                : Icon(
-                    Icons.power_settings_new_rounded,
-                    size: 18,
-                    color: value ? _green : Colors.grey,
-                  ),
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-/// Signal bars + ms.
-class _Bars extends StatelessWidget {
-  final int? ms;
-  final bool pending;
-  const _Bars({this.ms, this.pending = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final n = ms == null
-        ? 0
-        : ms! < 150
-        ? 3
-        : ms! < 350
-        ? 2
-        : 1;
-    final c = n == 3
-        ? _green
-        : n == 2
-        ? _amber
-        : _red;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        SizedBox(
-          width: 40,
-          child: Text(
-            pending
-                ? ''
-                : ms == null
-                ? '—'
-                : '$ms',
-            textAlign: TextAlign.right,
-            style: const TextStyle(fontSize: 11, color: _muted),
-          ),
-        ),
-        const SizedBox(width: 6),
-        for (var b = 0; b < 3; b++)
-          Container(
-            margin: const EdgeInsets.only(left: 2),
-            width: 4,
-            height: 6.0 + b * 4,
-            decoration: BoxDecoration(
-              color: b < n ? c : _line,
-              borderRadius: BorderRadius.circular(1),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-/// Live down/up speed graph.
-class _Spark extends CustomPainter {
-  final List<double> a, b;
-  _Spark(this.a, this.b);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final top = [...a, ...b, 1024.0].reduce((x, y) => x > y ? x : y);
-    for (final (l, c) in [(a, Colors.white), (b, _green)]) {
-      if (l.length < 2) continue;
-      final p = Path();
-      for (var i = 0; i < l.length; i++) {
-        final x = size.width * (i + 60 - l.length) / 59;
-        final y = size.height - 2 - (size.height - 4) * l[i] / top;
-        i == 0 ? p.moveTo(x, y) : p.lineTo(x, y);
-      }
-      canvas.drawPath(
-        p,
-        Paint()
-          ..color = c.withValues(alpha: .8)
-          ..strokeWidth = 1.6
-          ..style = PaintingStyle.stroke,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_Spark old) => true;
-}
-
-class _QrPainter extends CustomPainter {
-  final List<List<bool>> m;
-  _QrPainter(this.m);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final k = size.width / m.length;
-    final p = Paint()..color = Colors.black;
-    for (var y = 0; y < m.length; y++) {
-      for (var x = 0; x < m.length; x++) {
-        if (m[y][x]) {
-          canvas.drawRect(Rect.fromLTWH(x * k, y * k, k + .5, k + .5), p);
-        }
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_QrPainter old) => old.m != m;
+  Widget build(BuildContext context) =>
+      mobile ? _mobileShell() : _desktopShell();
 }
 
 String _proto(String t) =>
@@ -1697,10 +987,32 @@ String _proto(String t) =>
       'vmess': 'VMess',
       'vless': 'VLESS',
       'trojan': 'Trojan',
-      'shadowsocks': 'SS',
-      'hysteria2': 'Hy2',
+      'shadowsocks': 'Shadowsocks',
+      'hysteria2': 'Hysteria2',
     }[t] ??
     t;
+
+/// "VLESS · Reality", "VMess · WS + TLS".
+String _protoLong(Map<String, dynamic> o) {
+  final tr = (o['transport'] as Map?)?['type'] as String?;
+  final tls = o['tls'] as Map?;
+  final reality = (tls?['reality'] as Map?)?['enabled'] == true;
+  final extra = [
+    if (tr != null)
+      const {
+            'ws': 'WS',
+            'grpc': 'gRPC',
+            'http': 'HTTP',
+            'httpupgrade': 'HTTPUpgrade',
+          }[tr] ??
+          tr,
+    if (reality)
+      'Reality'
+    else if (tls?['enabled'] == true && tr != null)
+      'TLS',
+  ].join(' + ');
+  return [_proto(o['type']), if (extra.isNotEmpty) extra].join(' · ');
+}
 
 final _flagRe = RegExp(r'[\u{1F1E6}-\u{1F1FF}]{2}', unicode: true);
 
@@ -1711,10 +1023,6 @@ String? _cc(String name) {
       ? null
       : String.fromCharCodes(m[0]!.runes.map((r) => r - 0x1F1A5));
 }
-
-String _flag(String? cc) => cc == null || cc.length != 2
-    ? '🌐'
-    : String.fromCharCodes(cc.toUpperCase().codeUnits.map((c) => c + 0x1F1A5));
 
 /// Name without flag emoji (shown separately) and leftover empty brackets.
 String _clean(String n) {

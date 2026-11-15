@@ -26,7 +26,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
-  Win32Window::Size size(420, 760);
+  Win32Window::Size size(360, 600);  // frameless + fixed, see lib/main.dart
   if (!window.Create(L"mimray", origin, size)) {
     return EXIT_FAILURE;
   }

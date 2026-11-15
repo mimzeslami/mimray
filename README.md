@@ -1,6 +1,6 @@
 # mimray
 
-A simple, secure V2Ray-compatible VPN client for **macOS**, **Linux** and **Windows**, built with Flutter on top of the [sing-box](https://github.com/SagerNet/sing-box) core.
+A simple, secure V2Ray-compatible VPN client for **macOS**, **Linux**, **Windows** and **Android**, built with Flutter on top of the [sing-box](https://github.com/SagerNet/sing-box) core.
 
 - **Protocols:** VMess, VLESS (incl. Reality / XTLS-Vision), Trojan, Shadowsocks, Hysteria2
 - **Full-device TUN mode** – every app goes through the tunnel; DNS over HTTPS through the tunnel (no DNS leaks); IPv6 captured
@@ -30,7 +30,7 @@ curl -fsSL https://raw.githubusercontent.com/mimzeslami/mimray/main/install.sh |
 
 That's all — **no Flutter needed**. The installer:
 
-- installs the system packages it needs (GTK 3, polkit, zenity, gnome-screenshot) with apt / dnf / pacman / zypper — it asks for your sudo password once
+- installs the system packages it needs (GTK 3, AppIndicator for the tray icon, polkit, zenity, gnome-screenshot) with apt / dnf / pacman / zypper — it asks for your sudo password once
 - downloads the latest release and **verifies its sha256** against the release's `SHA256SUMS`
 - installs to `~/.local/share/mimray`, adds the `mimray` command and an app-menu entry
 
@@ -51,6 +51,14 @@ Installs to `%LOCALAPPDATA%\Programs\mimray` (no admin needed), verifies the sha
 **Run it:** open **mimray** from the Start Menu. Windows asks for permission (UAC) each time you connect — that's needed for the tunnel.
 Or download the `.zip` from [Releases](https://github.com/mimzeslami/mimray/releases), unzip anywhere and run `mimray.exe`.
 
+### Android 7.0+
+
+Download the APK for your phone from [Releases](https://github.com/mimzeslami/mimray/releases):
+`…-android-arm64-v8a.apk` for almost all phones from the last ~8 years (`armeabi-v7a` for very old ones, `x86_64` for emulators/Chromebooks).
+Open it and allow *Install unknown apps* for your browser/file manager when Android asks.
+On first connect Android asks once to allow the VPN — tap **OK**.
+Import with **+ Add → Add servers manually** or **Import from clipboard** (camera QR scanning is coming).
+
 ### Uninstall
 
 - macOS: delete `/Applications/mimray.app` and `~/Library/Application Support/mimray`
@@ -59,10 +67,11 @@ Or download the `.zip` from [Releases](https://github.com/mimzeslami/mimray/rele
 
 ## Usage
 
-1. **+ Add** → *Add subscription* (paste your `https://` link), or *Import from clipboard* / *Scan QR on screen*.
-2. Pick **Auto** or a server, flip the switch. The installer sets up the background helper, so there's no password prompt; without it you're asked once per connect (☰ → Settings → *Install* to add it later).
-3. Right-click (or long-press, or ⋯) a server or a subscription chip for copy / QR / export / delete.
-4. ☰ menu → **Settings**: connect on launch, smart Gemini routing, block QUIC, bypass LAN, DNS provider.
+1. **+** → paste your `https://` subscription link, or *From clipboard* / *Scan QR on screen* / *QR image* / *Config file*.
+2. Pick **Auto** or a location (servers are grouped by country), tap the power button. The installer sets up the background helper, so there's no password prompt; without it you're asked once per connect (⚙ Preferences → *Install* to add it later).
+3. ☆ pins a location to **Favorites**; **Recent** lists the last ones you connected to. ⋯ (or right-click / long-press) on a location shows its QR, copy link, export, delete. The bar at the bottom opens the subscription: usage, switch, update, export, edit.
+4. ⚙ **Preferences**: connect on launch, smart Gemini routing, block QUIC, bypass LAN, DNS provider, core log.
+5. Desktop: the tray / menu-bar icon shows the status and quick-connects to favorites.
 
 ## Security notes
 
@@ -75,7 +84,7 @@ Or download the `.zip` from [Releases](https://github.com/mimzeslami/mimray/rele
 
 ## The background helper
 
-The tunnel needs root. Instead of asking for your password on every connect, `install.sh` (or ☰ → Settings → *Install*)
+The tunnel needs root. Instead of asking for your password on every connect, `install.sh` (or ⚙ Preferences → *Install*)
 sets up a small root service once: a LaunchDaemon on macOS, a systemd service on Linux. It is built to be safe:
 
 - listens on a local socket only **your user** can open (file permission + peer uid check)
@@ -84,7 +93,7 @@ sets up a small root service once: a LaunchDaemon on macOS, a systemd service on
   (log files, certificate paths, rule sets, cache, external UI) or listen publicly is refused
 - the tunnel lives exactly as long as the app's connection; quit or crash ⇒ it stops
 
-Remove it: ☰ → Settings → *Remove*, or `sudo sh <app>/install-helper.sh --uninstall`.
+Remove it: ⚙ Preferences → *Remove*, or `sudo sh <app>/install-helper.sh --uninstall`.
 
 ## Build from source
 
@@ -96,8 +105,21 @@ flutter run -d macos     # or: flutter run -d linux
 ./tool/release.sh        # builds dist/mimray-<ver>-macos.dmg or dist/mimray-<ver>-linux-<arch>.tar.gz
 ```
 
-Linux build deps: `sudo apt install clang cmake ninja-build pkg-config libgtk-3-dev`.
+Linux build deps: `sudo apt install clang cmake ninja-build pkg-config libgtk-3-dev libayatana-appindicator3-dev`.
 [Go](https://go.dev/dl/) 1.24+ builds the background helper (optional — without it the app asks for a password per connect).
+
+### Android build
+
+The core runs in-process through sing-box's `libbox` library, built from the pinned source with only the features mimray uses:
+
+```sh
+./tool/build_libbox.sh        # needs Go, Android SDK + NDK, JDK 17 → android/app/libs/libbox.aar
+flutter run -d <device>       # or: TARGET=android ./tool/release.sh  → dist/*.apk
+```
+
+Release signing: add repository secrets `ANDROID_KEYSTORE_B64` (base64 of your .jks), `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Keep that keystore safe: Android only installs updates signed with the same key.
+Without the secrets, CI builds are debug-signed (fine for testing; updates between CI builds may need an uninstall).
 
 ### Signed + notarized macOS releases
 
@@ -125,4 +147,4 @@ flutter test                 # parsers, config, QR, UI layout
 
 ## Roadmap
 
-Android build (in progress); background helper for Windows (no UAC prompt per connect).
+Camera QR scanning and file import/export on Android; background helper for Windows (no UAC prompt per connect).

@@ -54,7 +54,11 @@ Future<String> _tmp(String name) async =>
 
 /// Lets the user drag a box around a QR on screen; returns the decoded text.
 /// Throws a readable message if no screenshot tool is available.
+const _mobileHint =
+    'Not available on Android yet — copy the link and use Import from clipboard.';
+
 Future<String?> scanScreenQr() async {
+  if (Platform.isAndroid) throw _mobileHint;
   final f = await _tmp('qr.png');
   if (Platform.isMacOS) {
     await Process.run('screencapture', ['-i', '-x', f]); // interactive region
@@ -102,6 +106,7 @@ Future<String?> scanScreenQr() async {
 
 /// Native "open file" dialog. Null if cancelled.
 Future<String?> pickOpenFile(String title) async {
+  if (Platform.isAndroid) throw _mobileHint;
   final ProcessResult r;
   if (Platform.isMacOS) {
     r = await Process.run('osascript', [
@@ -131,6 +136,9 @@ Future<String?> pickOpenFile(String title) async {
 
 /// Native "save file" dialog, then writes [content]. Returns the path or null.
 Future<String?> saveTextFile(String suggestedName, String content) async {
+  if (Platform.isAndroid) {
+    throw 'Saving files isn\'t available on Android yet — use Copy instead.';
+  }
   final ProcessResult r;
   if (Platform.isMacOS) {
     r = await Process.run('osascript', [

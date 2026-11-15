@@ -22,7 +22,7 @@ fi
 
 linux_deps() {
   [ "${MIMRAY_NO_DEPS:-}" = 1 ] && return
-  say "Installing dependencies (GTK 3, polkit, zenity, screenshot tool)"
+  say "Installing dependencies (GTK 3, AppIndicator, polkit, zenity, screenshot tool)"
   # a failed package install (mirror hiccup, no sudo) must not abort the app install;
   # the checks at the end flag anything critical
   install_pkgs || warn "Some packages couldn't be installed; continuing (see warnings below)."
@@ -34,15 +34,15 @@ install_pkgs() {
     PK=pkexec; apt-cache show pkexec >/dev/null 2>&1 || PK=policykit-1
     $SUDO apt-get update -qq
     $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-      libgtk-3-0 "$PK" zenity gnome-screenshot curl ca-certificates >/dev/null
+      libgtk-3-0 libayatana-appindicator3-1 "$PK" zenity gnome-screenshot curl ca-certificates >/dev/null
   elif command -v dnf >/dev/null; then
-    $SUDO dnf install -y -q gtk3 polkit zenity gnome-screenshot curl
+    $SUDO dnf install -y -q gtk3 libayatana-appindicator-gtk3 polkit zenity gnome-screenshot curl
   elif command -v pacman >/dev/null; then
-    $SUDO pacman -S --needed --noconfirm gtk3 polkit zenity gnome-screenshot curl
+    $SUDO pacman -S --needed --noconfirm gtk3 libayatana-appindicator polkit zenity gnome-screenshot curl
   elif command -v zypper >/dev/null; then
-    $SUDO zypper -n -q install gtk3 polkit zenity gnome-screenshot curl
+    $SUDO zypper -n -q install gtk3 libayatana-appindicator3-1 polkit zenity gnome-screenshot curl
   else
-    warn "Unknown package manager. Please install: GTK 3, polkit (pkexec), zenity, gnome-screenshot"
+    warn "Unknown package manager. Please install: GTK 3, libayatana-appindicator3, polkit (pkexec), zenity, gnome-screenshot"
   fi
 }
 
@@ -128,7 +128,7 @@ Name=mimray
 GenericName=VPN Client
 Comment=V2Ray / sing-box VPN client
 Exec=$DIR/mimray
-Icon=network-vpn
+Icon=$DIR/mimray.png
 Terminal=false
 Type=Application
 Categories=Network;
