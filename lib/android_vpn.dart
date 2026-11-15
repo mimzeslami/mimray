@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 import 'core.dart';
+import 'native.dart';
 import 'updater.dart';
 
 const _method = MethodChannel('mimray/vpn');
@@ -16,6 +17,7 @@ Future<void> initAndroidVpn() async {
   appDir = await _method.invokeMethod<String>('filesDir') ?? appDir;
   installApk = (path) =>
       _method.invokeMethod<void>('installApk', {'path': path});
+  androidOpenUrl = (url) => _method.invokeMethod<void>('openUrl', {'url': url});
   void Function(int)? onExit;
 
   void log(String line) {

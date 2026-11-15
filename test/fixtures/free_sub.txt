@@ -1,0 +1,16 @@
+#profile-title: base64:8J+GkyBHaXQ6YmFycnktZmFyIHwgU3ViMSDwn5Sl
+#profile-update-interval: 1
+#subscription-userinfo: upload=29; download=12; total=10737418240000000; expire=2546249531
+#support-url: https://github.com/barry-far/V2ray-config
+#profile-web-page-url: https://github.com/barry-far/V2ray-config
+ss://YWVzLTI1Ni1nY206cHc=@1.2.3.4:8080#%F0%9F%87%A9%F0%9F%87%AA%20DE-1
+ss://YWVzLTI1Ni1nY206cHc=@1.2.3.4:8080#duplicate%20of%20DE-1
+ss://YWVzLTI1Ni1nY206cHc=@1.2.3.4:8443#same%20host%20other%20port
+ss://YWVzLTI1Ni1nY206cHc=@5.6.7.8:19999#%F0%9F%87%BA%F0%9F%87%B8%20US
+hy2://pw@9.9.9.1:443?sni=d.com&insecure=1#HY
+vless://u2@b.example:443?security=reality&sni=x.com&fp=chrome&pbk=j_x32y8W5KyfJ3jNTjWUq0tUiG4kxEMzLp9T4M5zeDU&sid=ab&flow=xtls-rprx-vision&type=tcp#VL
+trojan://p%40ss@t.example:443?type=grpc&serviceName=g#TJ
+vless://u@e.com:443?type=xhttp#unsupported
+not a link at all
+ss://garbage
+#ss://YWVzLTI1Ni1nY206cHc=@6.6.6.6:1#commented%20out

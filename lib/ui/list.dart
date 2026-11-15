@@ -3,6 +3,7 @@ part of '../main.dart';
 /// Location list (All / Favorites / Recent), shared by both shells.
 extension _Locations on _HomeState {
   Widget _locations() {
+    if (tab == 'free') return _freeTab();
     final rows = <Widget>[];
     Widget hint(String t) {
       final st = _t(m ? 13 : 11, FontWeight.w400, _faint);
@@ -69,13 +70,13 @@ extension _Locations on _HomeState {
     );
   }
 
-  bool _live(int i) => phase == Phase.on && selected < 0 && stats?.active == i;
-  double _dim(int i) => locked && i != selected && !_live(i) ? .45 : 1;
+  bool _live(int i) => phase == Phase.on && subSel == -1 && stats?.active == i;
+  double _dim(int i) => locked && i != subSel && !_live(i) ? .45 : 1;
 
   Widget _autoRow() => Opacity(
-    opacity: locked && selected >= 0 ? .45 : 1,
+    opacity: locked && subSel != -1 ? .45 : 1,
     child: _tap(
-      color: selected < 0 ? _selBg : Colors.transparent,
+      color: subSel == -1 ? _selBg : Colors.transparent,
       radius: m ? 14 : 10,
       onTap: locked ? null : () => pick(-1),
       child: Padding(
@@ -102,7 +103,7 @@ extension _Locations on _HomeState {
               ),
             ),
             Opacity(
-              opacity: selected < 0 ? 1 : 0,
+              opacity: subSel == -1 ? 1 : 0,
               child: Icon(
                 Icons.check_circle_rounded,
                 size: m ? 22 : 18,
@@ -178,7 +179,7 @@ extension _Locations on _HomeState {
   );
 
   Widget _nodeRow(int i) {
-    final sel = i == selected;
+    final sel = i == subSel;
     return Opacity(
       opacity: _dim(i),
       child: _tap(
@@ -224,7 +225,7 @@ extension _Locations on _HomeState {
   }
 
   Widget _flatRow(int i) {
-    final sel = i == selected, cc = _cc(servers[i].name);
+    final sel = i == subSel, cc = _cc(servers[i].name);
     return Opacity(
       opacity: _dim(i),
       child: _tap(
@@ -275,7 +276,9 @@ extension _Locations on _HomeState {
       ('all', 'All', Icons.public_rounded),
       ('fav', 'Favorites', Icons.star_rounded),
       ('recent', 'Recent', Icons.history_rounded),
+      ('free', 'Free', Icons.redeem_rounded),
     ],
+    compact: true,
     value: tab,
     onTap: (v) => rebuild(() => tab = v),
     height: m ? 34 : 26,
