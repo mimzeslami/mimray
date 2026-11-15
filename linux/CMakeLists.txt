@@ -100,6 +100,9 @@ if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/core/sing-box")
 endif()
 install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/core/sing-box" DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
+# app icon for the .desktop entry (install.sh)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/mimray.png" DESTINATION "${CMAKE_INSTALL_PREFIX}"
+  COMPONENT Runtime)
 # root helper (no password per connect); optional if Go isn't installed
 execute_process(COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/../tool/build_helper.sh" COMMAND_ERROR_IS_FATAL ANY)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/core/mimray-helper")
