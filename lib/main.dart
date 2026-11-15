@@ -188,7 +188,7 @@ class _HomeState extends State<Home> {
     await state.writeAsString(
       jsonEncode({'subs': subs, 'cur': cur, 'sel': selected, 'settings': opt}),
     );
-    await Process.run('chmod', ['600', state.path]); // holds credentials
+    await privateFile(state.path); // holds credentials
   }
 
   void _toast(String t) {

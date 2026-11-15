@@ -1,5 +1,6 @@
 // QR codes + native OS dialogs via built-in tools (no plugins):
-// macOS: screencapture / osascript; Linux: zenity|kdialog, gnome-screenshot|spectacle|grim|import.
+// macOS: screencapture / osascript; Linux: zenity|kdialog, gnome-screenshot|spectacle|grim|import;
+// Windows: PowerShell + WinForms dialogs, Snipping Tool (ms-screenclip:).
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -38,6 +39,16 @@ Future<String?> decodeQrFile(String path) async {
 Future<bool> _has(String cmd) async =>
     (await Process.run('which', [cmd])).exitCode == 0;
 
+/// Runs a PowerShell script in STA mode (needed for WinForms dialogs/clipboard).
+Future<ProcessResult> _ps(String script) => Process.run('powershell', [
+  '-NoProfile',
+  '-STA',
+  '-Command',
+  'Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $script',
+]);
+
+String _psq(String s) => "'${s.replaceAll("'", "''")}'";
+
 Future<String> _tmp(String name) async =>
     '${(await Directory.systemTemp.createTemp('mimray')).path}/$name';
 
@@ -47,6 +58,14 @@ Future<String?> scanScreenQr() async {
   final f = await _tmp('qr.png');
   if (Platform.isMacOS) {
     await Process.run('screencapture', ['-i', '-x', f]); // interactive region
+  } else if (Platform.isWindows) {
+    // Snipping Tool puts the selection on the clipboard; wait up to 60s for it
+    await _ps(
+      '[Windows.Forms.Clipboard]::Clear(); Start-Process "ms-screenclip:"; '
+      'for (\$i = 0; \$i -lt 120; \$i++) { Start-Sleep -Milliseconds 500; '
+      '\$img = [Windows.Forms.Clipboard]::GetImage(); '
+      'if (\$img) { \$img.Save(${_psq(f)}, [Drawing.Imaging.ImageFormat]::Png); exit 0 } }; exit 1',
+    );
   } else {
     final tools = <String, List<String>>{
       'gnome-screenshot': ['-a', '-f', f],
@@ -89,6 +108,11 @@ Future<String?> pickOpenFile(String title) async {
       '-e',
       'POSIX path of (choose file with prompt "${_as(title)}")',
     ]);
+  } else if (Platform.isWindows) {
+    r = await _ps(
+      '\$d = New-Object Windows.Forms.OpenFileDialog; \$d.Title = ${_psq(title)}; '
+      'if (\$d.ShowDialog() -eq "OK") { \$d.FileName }',
+    );
   } else if (await _has('zenity')) {
     r = await Process.run('zenity', ['--file-selection', '--title=$title']);
   } else if (await _has('kdialog')) {
@@ -113,6 +137,12 @@ Future<String?> saveTextFile(String suggestedName, String content) async {
       '-e',
       'POSIX path of (choose file name with prompt "Export" default name "${_as(suggestedName)}")',
     ]);
+  } else if (Platform.isWindows) {
+    r = await _ps(
+      '\$d = New-Object Windows.Forms.SaveFileDialog; \$d.FileName = ${_psq(suggestedName)}; '
+      '\$d.Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*"; '
+      'if (\$d.ShowDialog() -eq "OK") { \$d.FileName }',
+    );
   } else if (await _has('zenity')) {
     r = await Process.run('zenity', [
       '--file-selection',
@@ -124,7 +154,8 @@ Future<String?> saveTextFile(String suggestedName, String content) async {
     r = await Process.run('kdialog', ['--getsavefilename', suggestedName]);
   } else {
     // no dialog tool: drop it in ~/Downloads
-    final p = '${Platform.environment['HOME']}/Downloads/$suggestedName';
+    final p =
+        '${Platform.environment['HOME'] ?? Platform.environment['USERPROFILE']}/Downloads/$suggestedName';
     await File(p).writeAsString(content);
     return p;
   }
@@ -134,10 +165,12 @@ Future<String?> saveTextFile(String suggestedName, String content) async {
   return p;
 }
 
-/// Show a file in Finder / the file manager.
-Future<void> reveal(String path) => Process.run(
-  Platform.isMacOS ? 'open' : 'xdg-open',
-  Platform.isMacOS ? ['-R', path] : [File(path).parent.path],
-);
+/// Show a file in Finder / Explorer / the file manager.
+Future<void> reveal(String path) => Platform.isWindows
+    ? Process.run('explorer', ['/select,', path.replaceAll('/', '\\')])
+    : Process.run(
+        Platform.isMacOS ? 'open' : 'xdg-open',
+        Platform.isMacOS ? ['-R', path] : [File(path).parent.path],
+      );
 
 String _as(String s) => s.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
