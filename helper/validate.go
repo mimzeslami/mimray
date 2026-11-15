@@ -60,21 +60,31 @@ func validate(c map[string]any) error {
 		if !ok {
 			return fmt.Errorf("dns must be an object")
 		}
-		if err := keysIn("dns", d, "servers", "final", "strategy"); err != nil {
+		if err := keysIn("dns", d, "servers", "rules", "final", "strategy"); err != nil {
 			return err
 		}
 		servers, _ := d["servers"].([]any)
-		dnsTypes := set("https", "tls", "udp", "local")
+		dnsTypes := set("https", "tls", "udp", "local", "fakeip")
 		for i, s := range servers {
 			m, ok := s.(map[string]any)
 			if !ok {
 				return fmt.Errorf("dns server %d must be an object", i)
 			}
-			if err := keysIn("dns.servers", m, "type", "tag", "server", "server_port", "detour"); err != nil {
+			if err := keysIn("dns.servers", m, "type", "tag", "server", "server_port", "detour", "inet4_range", "inet6_range"); err != nil {
 				return err
 			}
 			if t, _ := m["type"].(string); !dnsTypes[t] {
 				return fmt.Errorf("dns server type %q not allowed", t)
+			}
+		}
+		dnsRules, _ := d["rules"].([]any)
+		for i, x := range dnsRules {
+			m, ok := x.(map[string]any)
+			if !ok {
+				return fmt.Errorf("dns rule %d must be an object", i)
+			}
+			if err := keysIn("dns.rules", m, "query_type", "server"); err != nil {
+				return err
 			}
 		}
 	}

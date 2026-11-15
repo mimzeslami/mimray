@@ -1148,6 +1148,7 @@ extension _Sheets on _HomeState {
     Widget section(String l, Widget body) =>
         _gap([_label(l, m: m), body], m ? 8 : 6);
     final installed = helper != null;
+    final outdated = helper == '1'; // predates fake-IP DNS
     return [
       if (locked)
         Container(
@@ -1235,14 +1236,25 @@ extension _Sheets on _HomeState {
           _box([
             _row(
               installed ? Icons.verified_user_rounded : Icons.key_rounded,
-              installed
+              outdated
+                  ? 'Background helper needs an update'
+                  : installed
                   ? 'Background helper installed'
                   : 'Asked for password on every connect',
-              iconColor: installed ? _green : _amber,
-              sub: installed
+              iconColor: installed && !outdated ? _green : _amber,
+              sub: outdated
+                  ? 'Update it so sites like Gemini work on every server'
+                  : installed
                   ? 'Connects without a password'
                   : 'Install the helper once to stop the prompts',
-              trailing: installed
+              trailing: outdated
+                  ? _btn(
+                      'Update',
+                      () => _helperAction(false),
+                      h: m ? 34 : 28,
+                      pad: 12,
+                    )
+                  : installed
                   ? Opacity(
                       opacity: locked ? .4 : 1,
                       child: _tap(

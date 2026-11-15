@@ -1,7 +1,7 @@
 name: mimray
 description: "A new Flutter project."
 publish_to: 'none'
-version: 0.5.3+8
+version: 0.5.4+9
 
 environment:
   sdk: ^3.12.2

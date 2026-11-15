@@ -64,6 +64,18 @@ void main() {
       );
     }
   });
+  test('fake-IP DNS sends domains to the server; off for helper v1', () {
+    final o = [parseLink('vless://u@e.com:443?security=tls#x')!.outbound];
+    final on = buildConfig(o)['dns'] as Map;
+    expect((on['servers'] as List).last['type'], 'fakeip');
+    expect((on['rules'] as List).single['server'], 'fake');
+    final off = buildConfig(o, fakeDns: false)['dns'] as Map;
+    expect(off.containsKey('rules'), isFalse);
+    expect(
+      (off['servers'] as List).map((s) => s['type']),
+      isNot(contains('fakeip')),
+    );
+  });
   test('imports xray and sing-box JSON configs', () {
     final xray = jsonEncode({
       'outbounds': [
