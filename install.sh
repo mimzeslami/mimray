@@ -36,7 +36,7 @@ install_pkgs() {
     $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
       libgtk-3-0 libayatana-appindicator3-1 "$PK" zenity gnome-screenshot curl ca-certificates >/dev/null
   elif command -v dnf >/dev/null; then
-    $SUDO dnf install -y -q gtk3 libayatana-appindicator-gtk3 polkit zenity gnome-screenshot curl
+    $SUDO dnf install -y -q gtk3 libayatana-appindicator-gtk3 libglvnd-gles libglvnd-egl polkit zenity gnome-screenshot curl
   elif command -v pacman >/dev/null; then
     $SUDO pacman -S --needed --noconfirm gtk3 libayatana-appindicator polkit zenity gnome-screenshot curl
   elif command -v zypper >/dev/null; then

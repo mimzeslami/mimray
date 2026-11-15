@@ -44,13 +44,21 @@ bool isNewer(String a, String b) {
 }
 
 /// Release asset suffix for this OS + CPU, e.g. "-linux-x86_64.tar.gz".
+/// Installed from the .deb/.rpm (into /opt/mimray, owned by root).
+bool get _packaged =>
+    Platform.isLinux && Platform.resolvedExecutable.startsWith('/opt/mimray/');
+
 String? assetSuffix() {
   // Platform.version ends with: on "macos_arm64" / "linux_x64" / "android_arm64" ...
   final arch = RegExp(r'on "\w+_(\w+)"').firstMatch(Platform.version)?[1] ?? '';
   if (Platform.isMacOS) return '-macos.dmg';
   if (Platform.isWindows) return '-windows-x64.zip';
   if (Platform.isLinux) {
-    return arch == 'x64' ? '-linux-x86_64.tar.gz' : null;
+    if (arch != 'x64') return null;
+    if (!_packaged) return '-linux-x86_64.tar.gz';
+    return File('/usr/bin/dpkg').existsSync()
+        ? '-linux-x86_64.deb'
+        : '-linux-x86_64.rpm';
   }
   if (Platform.isAndroid) {
     final abi = const {
@@ -178,6 +186,14 @@ Future<bool> install(String file) async {
         'hdiutil detach -quiet "\$M"\n'
         'xattr -dr com.apple.quarantine ${_sq(app)} 2>/dev/null\n'
         'open ${_sq(app)}\n';
+    return _detached('/bin/sh', ['-c', sh]);
+  }
+  if (Platform.isLinux && _packaged) {
+    // after the app exits: one polkit prompt, the package manager upgrades it
+    final sh =
+        'while kill -0 $pid 2>/dev/null; do sleep 0.3; done\n'
+        'pkexec sh -c ${_sq('apt-get install -y ${_sq(file)} || dnf install -y ${_sq(file)} || zypper -n install --allow-unsigned-rpm ${_sq(file)}')} || exit 1\n'
+        'nohup /opt/mimray/mimray >/dev/null 2>&1 &\n';
     return _detached('/bin/sh', ['-c', sh]);
   }
   if (Platform.isLinux) {

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=mimray
+GenericName=VPN Client
+Comment=V2Ray / sing-box VPN client
+Exec=/opt/mimray/mimray
+Icon=mimray
+Terminal=false
+Type=Application
+Categories=Network;
+Keywords=vpn;v2ray;proxy;vless;vmess;
