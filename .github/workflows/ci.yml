@@ -59,7 +59,7 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: '1.24', cache-dependency-path: helper/go.sum }
       - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libayatana-appindicator3-dev
       - name: Import Developer ID certificate
         if: runner.os == 'macOS' && env.MACOS_CERT_P12 != ''
         run: |

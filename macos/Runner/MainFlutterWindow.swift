@@ -5,14 +5,19 @@ class MainFlutterWindow: NSWindow {
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     self.contentViewController = flutterViewController
-    // compact, phone-like window (size set in MainMenu.xib)
+    // fixed 360x600, no title bar: the app draws its own title row with
+    // traffic lights in the header (style mask also set in MainMenu.xib)
     self.isRestorable = false
+    self.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+    self.titleVisibility = .hidden
+    self.titlebarAppearsTransparent = true
+    for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+      self.standardWindowButton(b)?.isHidden = true
+    }
     DispatchQueue.main.async { // after Flutter's own initial sizing
-      self.setContentSize(NSSize(width: 420, height: 760))
+      self.setContentSize(NSSize(width: 360, height: 600))
       self.center()
     }
-    self.minSize = NSSize(width: 380, height: 600)
-    self.titlebarAppearsTransparent = true
     self.backgroundColor = NSColor(red: 0.043, green: 0.071, blue: 0.125, alpha: 1)
 
     RegisterGeneratedPlugins(registry: flutterViewController)

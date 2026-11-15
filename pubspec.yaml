@@ -11,6 +11,9 @@ dependencies:
     sdk: flutter
   image: ^4.13.1
   zxing2: ^0.2.4
+  window_manager: 0.5.2 # frameless fixed-size desktop window, drag, minimize
+  tray_manager: 0.5.3 # menu-bar / tray icon + menu
+  country_flags: 4.1.2 # bundled circular flag SVGs (no network)
 
 dev_dependencies:
   flutter_test:
@@ -19,3 +22,24 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/tray/
+  # Geist + Geist Mono v1.8.2 (github.com/vercel/geist-font), SIL OFL 1.1:
+  # assets/fonts/OFL.txt. Bundled, never fetched at runtime.
+  fonts:
+    - family: Geist
+      fonts:
+        - asset: assets/fonts/Geist-Regular.ttf
+        - asset: assets/fonts/Geist-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Geist-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Geist-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Geist-ExtraBold.ttf
+          weight: 800
+    - family: GeistMono
+      fonts:
+        - asset: assets/fonts/GeistMono-Regular.ttf
+        - asset: assets/fonts/GeistMono-Medium.ttf
+          weight: 500

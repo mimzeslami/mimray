@@ -28,7 +28,7 @@ Flutter **3.44.6** (what CI uses) and Go 1.24+ (for the root helper). The sing-b
 flutter run -d macos   # or -d linux
 ```
 
-Linux build deps: `sudo apt install clang cmake ninja-build pkg-config libgtk-3-dev`.
+Linux build deps: `sudo apt install clang cmake ninja-build pkg-config libgtk-3-dev libayatana-appindicator3-dev`.
 
 ## Code layout
 
