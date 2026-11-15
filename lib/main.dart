@@ -24,7 +24,7 @@ part 'ui/desktop.dart';
 part 'ui/mobile.dart';
 part 'ui/free_tab.dart';
 
-const appVersion = '0.5.0';
+const appVersion = '0.5.1';
 
 bool get _desktopOs =>
     Platform.isMacOS || Platform.isWindows || Platform.isLinux;
@@ -538,7 +538,10 @@ class _HomeState extends State<Home> with TrayListener {
       case 'screen':
         try {
           final t = await scanScreenQr();
-          if (t == null) return _toast('No QR code found');
+          // Android: null = user closed the camera, nothing to report
+          if (t == null) {
+            return Platform.isAndroid ? null : _toast('No QR code found');
+          }
           return await _importText(t, 'QR code');
         } catch (e) {
           return _toast('$e');
@@ -548,6 +551,7 @@ class _HomeState extends State<Home> with TrayListener {
         try {
           final p = await pickOpenFile(
             a == 'qrfile' ? 'Choose a QR image' : 'Choose a config file',
+            image: a == 'qrfile',
           );
           if (p == null) return;
           final t = a == 'qrfile'

@@ -67,6 +67,7 @@ dependencies {
     // sing-box core, built by tool/build_libbox.sh from the pinned source
     implementation(files("libs/libbox.aar"))
     implementation("androidx.core:core-ktx:1.13.1") // FileProvider for updates
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0") // camera QR scan (ZXing, no Play Services)
 }
 
 flutter {

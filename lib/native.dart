@@ -52,13 +52,15 @@ String _psq(String s) => "'${s.replaceAll("'", "''")}'";
 Future<String> _tmp(String name) async =>
     '${(await Directory.systemTemp.createTemp('mimray')).path}/$name';
 
-/// Lets the user drag a box around a QR on screen; returns the decoded text.
-/// Throws a readable message if no screenshot tool is available.
-const _mobileHint =
-    'Not available on Android yet — copy the link and use Import from clipboard.';
+/// Android: camera QR scanner and system file picker (set by android_vpn.dart).
+Future<String?> Function()? androidScanQr;
+Future<String?> Function(String mime)? androidPickFile;
 
+/// Desktop: lets the user drag a box around a QR on screen. Android: opens the
+/// camera scanner. Returns the decoded text, or null if cancelled / not found.
+/// Throws a readable message if no screenshot tool is available.
 Future<String?> scanScreenQr() async {
-  if (Platform.isAndroid) throw _mobileHint;
+  if (Platform.isAndroid) return androidScanQr!();
   final f = await _tmp('qr.png');
   if (Platform.isMacOS) {
     await Process.run('screencapture', ['-i', '-x', f]); // interactive region
@@ -104,9 +106,9 @@ Future<String?> scanScreenQr() async {
   return decodeQrFile(f);
 }
 
-/// Native "open file" dialog. Null if cancelled.
-Future<String?> pickOpenFile(String title) async {
-  if (Platform.isAndroid) throw _mobileHint;
+/// Native "open file" dialog ([image]: pictures only on Android). Null if cancelled.
+Future<String?> pickOpenFile(String title, {bool image = false}) async {
+  if (Platform.isAndroid) return androidPickFile!(image ? 'image/*' : '*/*');
   final ProcessResult r;
   if (Platform.isMacOS) {
     r = await Process.run('osascript', [

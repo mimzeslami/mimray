@@ -156,7 +156,7 @@ Bug reports, fixes and features are welcome; see [CONTRIBUTING.md](CONTRIBUTING.
 
 ## Roadmap
 
-- Camera QR scanning and file import/export on Android
+- File export on Android
 - Background helper on Windows (no UAC prompt per connect)
 - Notarized macOS builds
 
