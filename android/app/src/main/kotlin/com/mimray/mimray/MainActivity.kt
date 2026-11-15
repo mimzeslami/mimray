@@ -7,6 +7,8 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import androidx.core.content.FileProvider
+import java.io.File
 
 /**
  * Bridge to the Dart side:
@@ -39,6 +41,18 @@ class MainActivity : FlutterActivity() {
                         startVpn(config)
                         result.success(true)
                     }
+                }
+                "installApk" -> {
+                    // hand the downloaded, sha256-verified APK to Android's installer
+                    val path = call.argument<String>("path")
+                        ?: return@setMethodCallHandler result.error("args", "path missing", null)
+                    val uri = FileProvider.getUriForFile(this, "$packageName.updates", File(path))
+                    startActivity(
+                        Intent(Intent.ACTION_VIEW)
+                            .setDataAndType(uri, "application/vnd.android.package-archive")
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                    result.success(true)
                 }
                 "stop" -> {
                     startService(Intent(this, MimrayVpnService::class.java).setAction(MimrayVpnService.ACTION_STOP))

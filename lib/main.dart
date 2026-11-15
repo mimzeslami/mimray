@@ -9,6 +9,7 @@ import 'android_vpn.dart';
 import 'core.dart';
 import 'links.dart';
 import 'native.dart';
+import 'updater.dart' as updater;
 
 const appVersion = '0.3.0';
 
@@ -134,6 +135,9 @@ class _HomeState extends State<Home> {
   Map<int, int?> pings = {};
   bool busy = false;
   String? helper; // helper version when installed (no password prompts)
+  updater.Update? update; // newer release available
+  double? updateProgress; // non-null while downloading
+  Timer? _updateTimer;
   String? msg;
 
   Phase phase = Phase.off;
@@ -152,11 +156,20 @@ class _HomeState extends State<Home> {
     _load();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
     _checkHelper();
+    // check shortly after launch, then every 6 hours (cancellable timers)
+    _updateTimer = Timer(const Duration(seconds: 5), () {
+      _checkUpdate();
+      _updateTimer = Timer.periodic(
+        const Duration(hours: 6),
+        (_) => _checkUpdate(),
+      );
+    });
   }
 
   @override
   void dispose() {
     _tick?.cancel();
+    _updateTimer?.cancel();
     core.stop();
     super.dispose();
   }
@@ -733,6 +746,102 @@ class _HomeState extends State<Home> {
     );
   }
 
+  Future<void> _checkUpdate({bool manual = false}) async {
+    try {
+      final u = await updater.check(appVersion);
+      if (!mounted) return;
+      setState(() => update = u);
+      if (manual && u == null) {
+        _toast('mimray $appVersion is the latest version');
+      }
+    } catch (e) {
+      if (manual) _toast('Update check failed: $e');
+    }
+  }
+
+  Future<void> _installUpdate() async {
+    final u = update;
+    if (u == null || updateProgress != null) return;
+    setState(() => updateProgress = 0);
+    try {
+      final file = await updater.download(
+        u,
+        (p) => mounted ? setState(() => updateProgress = p) : null,
+      );
+      if (Platform.isAndroid) {
+        await updater.install(file); // system installer takes over
+        setState(() => updateProgress = null);
+        return;
+      }
+      if (await updater.install(file)) {
+        _toast('Installing mimray ${u.version}… the app will reopen');
+        await core.stop(); // the tunnel must not outlive the old app
+        await Future.delayed(const Duration(seconds: 2));
+        exit(0);
+      }
+      // app folder not writable (e.g. installed by another user): manual install
+      setState(() => updateProgress = null);
+      _toast('Opened the update — install it like a normal download');
+      await reveal(file);
+    } catch (e) {
+      setState(() => updateProgress = null);
+      _toast('Update failed: $e');
+    }
+  }
+
+  Widget _updateBanner() {
+    final u = update;
+    if (u == null) return const SizedBox.shrink();
+    final p = updateProgress;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: _blue.withValues(alpha: .14),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _blue.withValues(alpha: .5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.system_update_alt_rounded, size: 18, color: _blue),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'mimray ${u.version} is available',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (p != null) ...[
+                  const SizedBox(height: 6),
+                  LinearProgressIndicator(
+                    value: p == 0 ? null : p,
+                    minHeight: 3,
+                    backgroundColor: _line,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ] else
+                  Text(
+                    'You have $appVersion',
+                    style: const TextStyle(fontSize: 11, color: _muted),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: p == null ? _installUpdate : null,
+            child: Text(p == null ? 'Update' : '${(p * 100).round()}%'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _checkHelper() async {
     final v = await helperVersion();
     if (mounted) setState(() => helper = v);
@@ -872,6 +981,10 @@ class _HomeState extends State<Home> {
                   'sing-box core · github.com/mimzeslami/mimray',
                   style: TextStyle(color: _muted, fontSize: 11),
                 ),
+                trailing: TextButton(
+                  onPressed: () => _checkUpdate(manual: true),
+                  child: const Text('Check for updates'),
+                ),
               ),
             ],
           );
@@ -946,6 +1059,7 @@ class _HomeState extends State<Home> {
             child: Column(
               children: [
                 _hero(),
+                _updateBanner(),
                 _subsBar(),
                 Expanded(child: _serverList()),
               ],

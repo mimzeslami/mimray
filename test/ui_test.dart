@@ -3,7 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mimray/main.dart';
 
 void main() {
-  for (final size in [const Size(380, 600), const Size(420, 760), const Size(1000, 700)]) {
+  for (final size in [
+    const Size(380, 600),
+    const Size(420, 760),
+    const Size(1000, 700),
+  ]) {
     testWidgets('renders without overflow at $size', (t) async {
       t.view.physicalSize = size;
       t.view.devicePixelRatio = 1;
