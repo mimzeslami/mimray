@@ -87,8 +87,9 @@ Map<String, dynamic> buildConfig(
   String? secret,
   String stack = 'mixed',
   bool ipv6 = true,
+  bool fakeDns = true,
   Settings? opt,
-}) => _build(proxies, ai, api, secret, stack, ipv6, opt ?? Settings());
+}) => _build(proxies, ai, api, secret, stack, ipv6, fakeDns, opt ?? Settings());
 
 Map<String, dynamic> _build(
   List<Map<String, dynamic>> proxies,
@@ -97,6 +98,7 @@ Map<String, dynamic> _build(
   String? secret,
   String stack,
   bool ipv6,
+  bool fakeDns,
   Settings opt,
 ) => {
   'log': {'level': 'warn'},
@@ -105,7 +107,19 @@ Map<String, dynamic> _build(
       // all DNS goes over the tunnel via DoH -> no DNS leaks
       {'type': 'https', 'tag': 'remote', 'server': opt.dns, 'detour': 'proxy'},
       {'type': 'local', 'tag': 'local'},
+      // Fake IPs (like V2Box): apps get a placeholder address and the core
+      // sends the server the domain, not an IP. Servers that route by domain
+      // (e.g. Gemini out through WARP) only work this way.
+      if (fakeDns)
+        {'type': 'fakeip', 'tag': 'fake', 'inet4_range': '198.18.0.0/15'},
     ],
+    if (fakeDns)
+      'rules': [
+        {
+          'query_type': ['A', 'AAAA'],
+          'server': 'fake',
+        },
+      ],
     'final': 'remote',
     'strategy': 'ipv4_only',
   },
@@ -284,8 +298,11 @@ class Core {
     await sock.close();
     final r = Random.secure();
     _secret = base64Url.encode(List.generate(24, (_) => r.nextInt(256)));
+    // helper v1 predates fake-IP DNS and would refuse the config
+    final hv = platformVpn == null ? await helperVersion() : null;
     final config = buildConfig(
       proxies,
+      fakeDns: hv != '1',
       ai: ai,
       opt: opt,
       api: _api,
@@ -304,7 +321,7 @@ class Core {
         onExit(_stopping ? 0 : c);
       });
     }
-    if (await helperVersion() != null) {
+    if (hv != null) {
       return _startViaHelper(config, onExit);
     }
     await cfg.writeAsString(jsonEncode(config));

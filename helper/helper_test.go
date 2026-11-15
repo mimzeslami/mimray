@@ -61,6 +61,9 @@ func TestRejectsDangerousConfigs(t *testing.T) {
 			c["outbounds"] = append(c["outbounds"].([]any), map[string]any{"type": "wireguard"})
 		},
 		"dns server extra key": func(c map[string]any) { dns0(c)["path"] = "/x" },
+		"dns rule with rule_set": func(c map[string]any) {
+			c["dns"].(map[string]any)["rules"] = []any{map[string]any{"rule_set": "x", "server": "fake"}}
+		},
 	}
 	for name, mutate := range cases {
 		c := load(t, "auto.json")

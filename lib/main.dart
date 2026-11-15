@@ -24,7 +24,7 @@ part 'ui/desktop.dart';
 part 'ui/mobile.dart';
 part 'ui/free_tab.dart';
 
-const appVersion = '0.5.3';
+const appVersion = '0.5.4';
 
 bool get _desktopOs =>
     Platform.isMacOS || Platform.isWindows || Platform.isLinux;

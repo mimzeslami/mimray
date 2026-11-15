@@ -36,6 +36,18 @@ Future<void> main() async {
         'outbounds': [
           {'type': 'direct', 'bind_interface': nic},
         ],
+        // The client sends domains (fake-IP DNS); resolve them off-tunnel too.
+        'dns': {
+          'servers': [
+            {
+              'type': 'udp',
+              'tag': 'nic',
+              'server': '8.8.8.8',
+              'bind_interface': nic,
+            },
+          ],
+        },
+        'route': {'default_domain_resolver': 'nic'},
       }),
     );
   final serverLog = File('${dir.path}\\server.log');

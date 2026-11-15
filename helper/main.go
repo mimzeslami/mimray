@@ -11,7 +11,7 @@
 //
 // Protocol (one JSON object per line):
 //
-//	client -> {"cmd":"version"}                 helper -> {"version":"1"}
+//	client -> {"cmd":"version"}                 helper -> {"version":"2"}
 //	client -> {"cmd":"start","config":{...}}    helper -> {"log":"..."}* then {"exit":N} | {"error":"..."}
 //	client -> {"cmd":"stop"} or closes the connection: core is stopped
 package main
@@ -34,7 +34,7 @@ import (
 	"time"
 )
 
-const version = "1"
+const version = "2"
 
 var (
 	mu      sync.Mutex
