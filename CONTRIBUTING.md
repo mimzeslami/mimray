@@ -14,6 +14,7 @@ Thanks for helping! Bug reports, fixes and features are all welcome.
    flutter analyze
    flutter test
    ./tool/linux_tun_test.sh   # if you touched lib/core.dart or tunnel/config code (needs Docker)
+   (cd helper && go test ./...)  # if you touched helper/
    ```
 4. Open a pull request against `main` and fill in the template
 
@@ -21,7 +22,7 @@ For anything big (new protocol, new platform, UI redesign) please open an issue 
 
 ## Dev setup
 
-Flutter **3.44.6** (what CI uses). The sing-box core is downloaded and sha256-verified on first build.
+Flutter **3.44.6** (what CI uses) and Go 1.24+ (for the root helper). The sing-box core is downloaded and sha256-verified on first build.
 
 ```sh
 flutter run -d macos   # or -d linux
@@ -37,7 +38,8 @@ Linux build deps: `sudo apt install clang cmake ninja-build pkg-config libgtk-3-
 | `lib/core.dart` | builds the sing-box config, runs the core as root, stats |
 | `lib/native.dart` | QR encode/decode, native file dialogs, screen capture |
 | `lib/main.dart` | the UI |
-| `tool/` | core download, release packaging, Linux TUN e2e test |
+| `helper/` | root helper service (Go): config validation, socket protocol |
+| `tool/` | core download, helper build, release packaging, Linux e2e tests |
 
 ## Rules of thumb
 

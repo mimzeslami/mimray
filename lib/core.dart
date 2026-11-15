@@ -172,10 +172,69 @@ class Stats {
   );
 }
 
+/// Root helper service (see helper/): starts the core without a password prompt.
+final helperSock = Platform.isMacOS
+    ? '/var/run/mimray.sock'
+    : '/run/mimray.sock';
+final _exeDir = File(Platform.resolvedExecutable).parent.path;
+
+/// The install script ships inside the app when the helper was built
+/// (macOS: Contents/Resources, since scripts in Contents/MacOS break signing).
+final _helperScript = Platform.isMacOS
+    ? '$_exeDir/../Resources/install-helper.sh'
+    : '$_exeDir/install-helper.sh';
+bool get helperBundled => File(_helperScript).existsSync();
+
+Future<Socket> _helperConnect() => Socket.connect(
+  InternetAddress(helperSock, type: InternetAddressType.unix),
+  0,
+  timeout: const Duration(seconds: 2),
+);
+
+/// Helper version if it's installed and answering, else null.
+Future<String?> helperVersion() async {
+  if (!File(helperSock).existsSync()) return null;
+  try {
+    final s = await _helperConnect();
+    s.write('{"cmd":"version"}\n');
+    final line = await s
+        .cast<List<int>>()
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .first
+        .timeout(const Duration(seconds: 2));
+    s.destroy();
+    return jsonDecode(line)['version'] as String?;
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Installs (or removes) the helper. Asks for the admin password once.
+Future<String?> setupHelper({bool uninstall = false}) async {
+  final uid = (await Process.run('id', ['-u'])).stdout.toString().trim();
+  final script = _helperScript;
+  final sh = uninstall
+      ? 'sh ${_sq(script)} --uninstall'
+      : 'sh ${_sq(script)} ${_sq(_exeDir)} $uid';
+  final ProcessResult r;
+  if (Platform.isMacOS) {
+    final as = sh.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
+    r = await Process.run('osascript', [
+      '-e',
+      'do shell script "$as" with administrator privileges',
+    ]);
+  } else {
+    r = await Process.run('pkexec', ['/bin/sh', '-c', sh]);
+  }
+  return r.exitCode == 0 ? null : '${r.stderr}${r.stdout}'.trim();
+}
+
 class Core {
   Process? _p;
+  Socket? _h; // helper session
   String? _api, _secret;
-  bool get running => _p != null;
+  bool get running => _p != null || _h != null;
   String get log => '$appDir/core.log';
   String get _stop => '$appDir/stop';
 
@@ -194,19 +253,19 @@ class Core {
     await sock.close();
     final r = Random.secure();
     _secret = base64Url.encode(List.generate(24, (_) => r.nextInt(256)));
-    await cfg.writeAsString(
-      jsonEncode(
-        buildConfig(
-          proxies,
-          ai: ai,
-          opt: opt,
-          api: _api,
-          secret: _secret,
-          stack: Platform.isLinux ? 'gvisor' : 'mixed',
-          ipv6: !Platform.isLinux || _linuxV6(),
-        ),
-      ),
+    final config = buildConfig(
+      proxies,
+      ai: ai,
+      opt: opt,
+      api: _api,
+      secret: _secret,
+      stack: Platform.isLinux ? 'gvisor' : 'mixed',
+      ipv6: !Platform.isLinux || _linuxV6(),
     );
+    if (await helperVersion() != null) {
+      return _startViaHelper(config, onExit);
+    }
+    await cfg.writeAsString(jsonEncode(config));
     await Process.run('chmod', ['600', cfg.path]); // contains credentials
     final stop = File(_stop);
     if (await stop.exists()) await stop.delete();
@@ -239,14 +298,55 @@ class Core {
     });
   }
 
-  Future<void> stop() => File(_stop).writeAsString('');
+  /// No password: the helper runs the core for as long as this socket is open.
+  Future<void> _startViaHelper(
+    Map<String, dynamic> config,
+    void Function(int code) onExit,
+  ) async {
+    final s = await _helperConnect();
+    _h = s;
+    final logSink = File(log).openWrite();
+    var code = 1;
+    s.write('${jsonEncode({'cmd': 'start', 'config': config})}\n');
+    s
+        .cast<List<int>>()
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen(
+          (line) {
+            try {
+              final m = jsonDecode(line) as Map;
+              if (m['log'] != null) logSink.writeln(m['log']);
+              if (m['error'] != null) logSink.writeln('helper: ${m['error']}');
+              if (m['exit'] != null) code = m['exit'];
+            } catch (_) {}
+          },
+          onDone: () {
+            logSink.close();
+            s.destroy();
+            _h = null;
+            onExit(code);
+          },
+          onError: (_) {},
+          cancelOnError: false,
+        );
+  }
+
+  Future<void> stop() async {
+    final h = _h;
+    if (h != null) {
+      h.write('{"cmd":"stop"}\n');
+      return;
+    }
+    await File(_stop).writeAsString('');
+  }
 
   int _lastUp = 0, _lastDown = 0;
 
   /// Totals + per-second rates from the core. Null until the core is up.
   /// Call once a second.
   Future<Stats?> stats() async {
-    if (_p == null) return null;
+    if (!running) return null;
     try {
       final auth = {'Authorization': 'Bearer $_secret'};
       final j = await _get('http://$_api/connections', auth);

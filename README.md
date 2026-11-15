@@ -10,6 +10,7 @@ A simple, secure V2Ray-compatible VPN client for **macOS** and **Linux**, built 
 - **Import:** clipboard, QR on screen, QR image, config file (share links, base64 subscription, v2ray/xray or sing-box JSON)
 - **Export:** copy link, QR code, file – per server or per subscription
 - Live speed, traffic totals, connection count, exit IP + location
+- **No password on every connect** – an optional background helper (installed once) starts the tunnel for you
 
 ## Install
 
@@ -46,7 +47,7 @@ Then **+ Add → Add subscription**, pick a server (or Auto) and flip the switch
 ## Usage
 
 1. **+ Add** → *Add subscription* (paste your `https://` link), or *Import from clipboard* / *Scan QR on screen*.
-2. Pick **Auto** or a server, flip the switch. Your password is asked once per connect (the TUN interface needs admin rights).
+2. Pick **Auto** or a server, flip the switch. The installer sets up the background helper, so there's no password prompt; without it you're asked once per connect (☰ → Settings → *Install* to add it later).
 3. Right-click (or long-press, or ⋯) a server or a subscription chip for copy / QR / export / delete.
 4. ☰ menu → **Settings**: connect on launch, smart Gemini routing, block QUIC, bypass LAN, DNS provider.
 
@@ -59,6 +60,19 @@ Then **+ Add → Add subscription**, pick a server (or Auto) and flip the switch
 - The core runs as root only while connected, and stops by itself within a second if the app quits or crashes.
 - Servers whose link disables certificate checks are marked with ⚠.
 
+## The background helper
+
+The tunnel needs root. Instead of asking for your password on every connect, `install.sh` (or ☰ → Settings → *Install*)
+sets up a small root service once: a LaunchDaemon on macOS, a systemd service on Linux. It is built to be safe:
+
+- listens on a local socket only **your user** can open (file permission + peer uid check)
+- runs only its own root-owned copy of sing-box
+- accepts only the kind of config the app generates — anything that could make the core read/write files
+  (log files, certificate paths, rule sets, cache, external UI) or listen publicly is refused
+- the tunnel lives exactly as long as the app's connection; quit or crash ⇒ it stops
+
+Remove it: ☰ → Settings → *Remove*, or `sudo sh <app>/install-helper.sh --uninstall`.
+
 ## Build from source
 
 Requires Flutter (stable). The core is downloaded and verified automatically on first build.
@@ -70,14 +84,32 @@ flutter run -d macos     # or: flutter run -d linux
 ```
 
 Linux build deps: `sudo apt install clang cmake ninja-build pkg-config libgtk-3-dev`.
+[Go](https://go.dev/dl/) 1.24+ builds the background helper (optional — without it the app asks for a password per connect).
+
+### Signed + notarized macOS releases
+
+CI signs and notarizes automatically once these repository secrets exist (Settings → Secrets → Actions):
+
+| Secret | Value |
+|---|---|
+| `MACOS_CERT_P12` | your *Developer ID Application* certificate exported as .p12, base64: `base64 -i cert.p12 \| pbcopy` |
+| `MACOS_CERT_PASSWORD` | the .p12 export password |
+| `MACOS_SIGN_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAMID)` |
+| `APPLE_ID` | your Apple ID email |
+| `APPLE_TEAM_ID` | 10-character team ID |
+| `APPLE_APP_PASSWORD` | an [app-specific password](https://account.apple.com) |
+
+Without them releases are ad-hoc signed (first launch: right-click → Open).
 
 Tests:
 
 ```sh
 flutter test                 # parsers, config, QR, UI layout
 ./tool/linux_tun_test.sh     # end-to-end Linux TUN test in Docker (traffic + DNS through a real proxy)
+./tool/linux_helper_test.sh  # end-to-end root helper test in Docker
+(cd helper && go test ./...) # helper: config validation + socket protocol
 ```
 
 ## Roadmap
 
-Windows and Android builds, macOS helper to avoid the per-connect password prompt, notarized macOS builds.
+Windows and Android builds (in progress).

@@ -5,6 +5,7 @@
 # Downloads are verified against the release's SHA256SUMS.
 # Env: MIMRAY_TARBALL=/path/file.tar.gz  install a local build instead of downloading
 #      MIMRAY_NO_DEPS=1                  skip installing system packages
+#      MIMRAY_NO_HELPER=1                don't install the background helper
 set -eu
 REPO=mimzeslami/mimray
 OS=$(uname -s)
@@ -90,6 +91,11 @@ if [ "$OS" = Darwin ]; then
   hdiutil detach -quiet "$T/mnt"
   xattr -dr com.apple.quarantine "$DEST/mimray.app" 2>/dev/null || true
   say "Installed to $DEST/mimray.app"
+  B="$DEST/mimray.app/Contents/MacOS"
+  if [ -f "$B/../Resources/install-helper.sh" ] && [ "${MIMRAY_NO_HELPER:-}" != 1 ]; then
+    say "Installing the background helper (so connecting won't ask for a password)"
+    sudo sh "$B/../Resources/install-helper.sh" "$B" "$(id -u)" || warn "Helper not installed; you can install it later in Settings."
+  fi
   cat <<EOF
 
   Run it:  open it from Launchpad / Applications, or:  open -a mimray
@@ -132,7 +138,13 @@ command -v update-desktop-database >/dev/null && update-desktop-database "$HOME/
 
 # sanity: the bundled core must run on this system
 "$DIR/sing-box" version >/dev/null 2>&1 || warn "The VPN core couldn't start here (glibc too old or non-glibc distro like Alpine)."
-command -v pkexec >/dev/null || warn "pkexec missing: install polkit, it's needed to start the tunnel."
+if [ -f "$DIR/install-helper.sh" ] && [ "${MIMRAY_NO_HELPER:-}" != 1 ] && [ -d /run/systemd/system ] \
+  && { [ -n "$SUDO" ] || [ "$(id -u)" = 0 ]; }; then
+  say "Installing the background helper (so connecting won't ask for a password)"
+  $SUDO sh "$DIR/install-helper.sh" "$DIR" "$(id -u)" || warn "Helper not installed; you can install it later in Settings."
+else
+  command -v pkexec >/dev/null || warn "pkexec missing: install polkit, it's needed to start the tunnel."
+fi
 
 say "Installed to $DIR"
 cat <<EOF
@@ -143,7 +155,8 @@ cat <<EOF
            You'll be asked for your password when connecting (needed for the tunnel).
 
   Update:  run this installer again.
-  Remove:  rm -rf ~/.local/share/mimray ~/.local/bin/mimray ~/.config/mimray \\
+  Remove:  sudo sh ~/.local/share/mimray/install-helper.sh --uninstall
+           rm -rf ~/.local/share/mimray ~/.local/bin/mimray ~/.config/mimray \\
               ~/.local/share/applications/mimray.desktop; sudo rm -f /usr/local/bin/mimray
 
 EOF

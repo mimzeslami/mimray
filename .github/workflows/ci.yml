@@ -12,11 +12,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with: { flutter-version: 3.44.6, channel: stable, cache: true }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.24', cache-dependency-path: helper/go.sum }
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      - name: Helper unit tests
+        run: cd helper && go vet ./... && go test ./...
       - name: Linux TUN end-to-end (Docker)
         run: ./tool/linux_tun_test.sh
+      - name: Linux helper end-to-end (Docker, real root)
+        run: ./tool/linux_helper_test.sh
 
   build:
     needs: test
@@ -25,12 +31,33 @@ jobs:
       matrix:
         os: [macos-latest, ubuntu-22.04] # 22.04 = older glibc, runs on newer distros
     runs-on: ${{ matrix.os }}
+    env:
+      # macOS signing + notarization switch on automatically once these secrets exist
+      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with: { flutter-version: 3.44.6, channel: stable, cache: true }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.24', cache-dependency-path: helper/go.sum }
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+      - name: Import Developer ID certificate
+        if: runner.os == 'macOS' && env.MACOS_CERT_P12 != ''
+        run: |
+          KP=$(openssl rand -hex 16)
+          security create-keychain -p "$KP" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KP" build.keychain
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k build.keychain -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KP" build.keychain
+          rm "$RUNNER_TEMP/cert.p12"
       - run: ./tool/release.sh
       - uses: actions/upload-artifact@v4
         with: { name: 'dist-${{ matrix.os }}', path: dist/* }

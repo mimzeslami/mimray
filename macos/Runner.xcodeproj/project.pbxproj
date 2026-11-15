@@ -304,7 +304,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nSRC=\"$PROJECT_DIR/core/sing-box\"\n[ -x \"$SRC\" ] || \"$PROJECT_DIR/../tool/fetch_core.sh\"\ncp \"$SRC\" \"$BUILT_PRODUCTS_DIR/$EXECUTABLE_FOLDER_PATH/sing-box\"\n";
+			shellScript = "set -e\nexport PATH=\"$PATH:/opt/homebrew/bin:/usr/local/bin:/usr/local/go/bin\"\nC=\"$PROJECT_DIR/core\"\nOUT=\"$BUILT_PRODUCTS_DIR/$EXECUTABLE_FOLDER_PATH\"\n[ -x \"$C/sing-box\" ] || \"$PROJECT_DIR/../tool/fetch_core.sh\"\n\"$PROJECT_DIR/../tool/build_helper.sh\"\ncp \"$C/sing-box\" \"$OUT/sing-box\"\nif [ -x \"$C/mimray-helper\" ]; then cp \"$C/mimray-helper\" \"$OUT/\"; cp \"$C/install-helper.sh\" \"$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/\"; fi\n";
 		};
 		3399D490228B24CF009A79C7 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;

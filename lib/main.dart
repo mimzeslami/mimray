@@ -9,7 +9,7 @@ import 'core.dart';
 import 'links.dart';
 import 'native.dart';
 
-const appVersion = '0.2.0';
+const appVersion = '0.3.0';
 
 // Palette
 const _bg = Color(0xFF0B1220);
@@ -128,6 +128,7 @@ class _HomeState extends State<Home> {
   int selected = -1; // -1 = Auto (best server)
   Map<int, int?> pings = {};
   bool busy = false;
+  String? helper; // helper version when installed (no password prompts)
   String? msg;
 
   Phase phase = Phase.off;
@@ -145,6 +146,7 @@ class _HomeState extends State<Home> {
     super.initState();
     _load();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
+    _checkHelper();
   }
 
   @override
@@ -726,6 +728,27 @@ class _HomeState extends State<Home> {
     );
   }
 
+  Future<void> _checkHelper() async {
+    final v = await helperVersion();
+    if (mounted) setState(() => helper = v);
+  }
+
+  Future<void> _helperAction(
+    bool uninstall,
+    void Function(VoidCallback) set,
+  ) async {
+    final err = await setupHelper(uninstall: uninstall);
+    await _checkHelper();
+    set(() {});
+    _toast(
+      err != null
+          ? 'Helper: ${err.split('\n').last}'
+          : uninstall
+          ? 'Helper removed — you\'ll be asked for your password again'
+          : 'Helper installed — no more password prompts',
+    );
+  }
+
   Future<void> _settings() async {
     await _sheet(
       (c) => StatefulBuilder(
@@ -798,6 +821,42 @@ class _HomeState extends State<Home> {
                 onSelectionChanged: (v) => upd(() => opt.dns = v.first),
               ),
               const SizedBox(height: 18),
+              if (helperBundled) ...[
+                _section('Password prompt'),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    helper != null
+                        ? Icons.verified_user_rounded
+                        : Icons.key_rounded,
+                    color: helper != null ? _green : _amber,
+                  ),
+                  title: Text(
+                    helper != null
+                        ? 'Background helper installed'
+                        : 'Asked for password on every connect',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  subtitle: Text(
+                    helper != null
+                        ? 'Connects without a password'
+                        : 'Install the helper once to stop the prompts',
+                    style: const TextStyle(fontSize: 11, color: _muted),
+                  ),
+                  trailing: helper != null
+                      ? TextButton(
+                          onPressed: locked
+                              ? null
+                              : () => _helperAction(true, set),
+                          child: const Text('Remove'),
+                        )
+                      : FilledButton(
+                          onPressed: () => _helperAction(false, set),
+                          child: const Text('Install'),
+                        ),
+                ),
+                const SizedBox(height: 8),
+              ],
               _section('About'),
               ListTile(
                 contentPadding: EdgeInsets.zero,
