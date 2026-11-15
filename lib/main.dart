@@ -12,6 +12,7 @@ import 'package:window_manager/window_manager.dart';
 import 'android_vpn.dart';
 import 'core.dart';
 import 'countries.dart';
+import 'free.dart';
 import 'links.dart';
 import 'native.dart';
 import 'updater.dart' as updater;
@@ -21,8 +22,9 @@ part 'ui/shared.dart';
 part 'ui/list.dart';
 part 'ui/desktop.dart';
 part 'ui/mobile.dart';
+part 'ui/free_tab.dart';
 
-const appVersion = '0.4.0';
+const appVersion = '0.5.0';
 
 bool get _desktopOs =>
     Platform.isMacOS || Platform.isWindows || Platform.isLinux;
@@ -111,7 +113,7 @@ class _HomeState extends State<Home> with TrayListener {
   // redesign state
   Set<String> favorites = {}; // server ids (see _id)
   List<String> recent = []; // last connected server ids, newest first
-  String tab = 'all'; // all | fav | recent
+  String tab = 'all'; // all | fav | recent | free
   final expanded = <String>{}; // open country groups ('' = Other)
   String query = '';
   bool searching = false;
@@ -119,6 +121,30 @@ class _HomeState extends State<Home> with TrayListener {
   int nav = 0; // mobile tab: home | locations | settings
   String logText = '';
   final _rev = ValueNotifier(0); // bumps on every setState: keeps sheets live
+
+  // free servers (opt-in): working public + community servers, tested here
+  bool freeOn = false, freeAuto = true;
+  List<FreeServer> free = [], shared = []; // sorted by delay
+  DateTime? freeUpdated;
+  bool freeBusy = false;
+  String? freeStatus; // "Testing 37/200…" while updating
+  double? freeProgress;
+  Timer? _freeTimer;
+
+  /// The connect pool is the free list (selected then indexes [freePool]).
+  bool onFree = false;
+  List<FreeServer> get freePool => [...free, ...shared];
+
+  /// Servers the power button connects to: the current subscription, or Free.
+  List<Server> get pool =>
+      onFree ? [for (final f in freePool) f.server] : servers;
+
+  /// Selection inside the subscription lists (-2 = none: Free is in use).
+  int get subSel => onFree ? -2 : selected;
+
+  /// Android has no core binary to test with: TCP reachability only.
+  bool get reachOnly =>
+      Platform.isAndroid || widget.demo?['_reachOnly'] == true;
 
   bool get demo => widget.demo != null;
   bool get mobile => widget.mobile ?? (Platform.isAndroid || Platform.isIOS);
@@ -158,6 +184,10 @@ class _HomeState extends State<Home> with TrayListener {
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
     _checkHelper();
     if (!mobile && _desktopOs) _initTray();
+    _freeTimer = Timer.periodic(
+      const Duration(minutes: 10),
+      (_) => _autoFree(),
+    );
     // check shortly after launch, then every 6 hours (cancellable timers)
     _updateTimer = Timer(const Duration(seconds: 5), () {
       _checkUpdate();
@@ -172,7 +202,9 @@ class _HomeState extends State<Home> with TrayListener {
   void dispose() {
     _tick?.cancel();
     _updateTimer?.cancel();
+    _freeTimer?.cancel();
     if (!demo) {
+      stopCoreTest();
       core.stop();
       if (_trayReady) trayManager.removeListener(this);
     }
@@ -186,7 +218,11 @@ class _HomeState extends State<Home> with TrayListener {
       final j = jsonDecode(await state.readAsString());
       setState(() => _applyState(j));
       _pingAll();
-      if (opt.autoConnect && servers.isNotEmpty) _toggle();
+      if (opt.autoConnect && pool.isNotEmpty) {
+        _toggle();
+      } else {
+        Timer(const Duration(seconds: 10), _autoFree);
+      }
     } catch (_) {}
   }
 
@@ -201,16 +237,31 @@ class _HomeState extends State<Home> with TrayListener {
     }
     opt = Settings.fromJson(j['settings']);
     cur = ((j['cur'] ?? 0) as int).clamp(0, subs.isEmpty ? 0 : subs.length - 1);
-    selected = j['sel'] ?? -1;
-    if (selected >= servers.length) selected = -1;
     favorites = {...?(j['favorites'] as List?)?.cast<String>()};
     recent = [...?(j['recent'] as List?)?.cast<String>()];
-    if (selected >= 0) expanded.add(_group(servers[selected]));
+    if (j['free'] case final Map f) {
+      freeOn = f['on'] == true;
+      freeAuto = f['auto'] != false;
+      List<FreeServer> list(Object? l) => [
+        for (final e in (l is List ? l : const []))
+          if (e is Map) ?FreeServer.fromJson(e),
+      ];
+      free = list(f['servers']);
+      shared = list(f['shared']);
+      freeUpdated = f['updated'] is int
+          ? DateTime.fromMillisecondsSinceEpoch(f['updated'])
+          : null;
+      onFree = freeOn && f['pool'] == true;
+    }
+    selected = j['sel'] ?? -1;
+    if (selected >= pool.length) selected = -1;
+    if (subSel >= 0) expanded.add(_group(servers[selected]));
   }
 
   /// Test/screenshot state: `_phase`, `_pings`, `_stats` [up, down, upRate,
   /// downRate, conns, active], `_ip`, `_uptime` (s), `_helper`, `_log`, `_tab`,
-  /// `_expanded`, `_os`, `_nav`, `_view`.
+  /// `_expanded`, `_os`, `_nav`, `_view`, `_freeStatus`, `_freeProgress`,
+  /// `_reachOnly`.
   void _applyDemo(Map d) {
     phase = Phase.values.byName(d['_phase'] ?? 'off');
     pings = {
@@ -221,6 +272,9 @@ class _HomeState extends State<Home> with TrayListener {
       update = updater.Update(v, '', '', '', '', '');
     }
     logText = d['_log'] ?? '';
+    freeStatus = d['_freeStatus'];
+    freeBusy = freeStatus != null;
+    freeProgress = d['_freeProgress'];
     tab = d['_tab'] ?? 'all';
     nav = d['_nav'] ?? 0;
     view = d['_view'] ?? 'main';
@@ -253,6 +307,14 @@ class _HomeState extends State<Home> with TrayListener {
         'settings': opt,
         'favorites': favorites.toList(),
         'recent': recent,
+        'free': {
+          'on': freeOn,
+          'auto': freeAuto,
+          'pool': onFree,
+          'updated': freeUpdated?.millisecondsSinceEpoch,
+          'servers': free,
+          'shared': shared,
+        },
       }),
     );
     await privateFile(state.path); // holds credentials
@@ -276,7 +338,7 @@ class _HomeState extends State<Home> with TrayListener {
 
   /// Stable server id for favorites/recent: survives renames and re-fetches.
   // ponytail: two nodes on the same type+host+port share a star; add the path if that bites.
-  String _id(Server s) => '${s.outbound['type']}://${s.host}:${s.port}';
+  String _id(Server s) => serverKey(s);
 
   String _group(Server s) => _cc(s.name) ?? '';
 
@@ -328,6 +390,7 @@ class _HomeState extends State<Home> with TrayListener {
   void pick(int i) {
     if (locked) return;
     setState(() {
+      onFree = false;
       selected = i;
       if (mobile) nav = 0;
     });
@@ -340,19 +403,21 @@ class _HomeState extends State<Home> with TrayListener {
 
   /// Server in use: the selected one, or the one Auto picked once connected.
   int? get activeIndex {
-    if (servers.isEmpty) return null;
+    final p = pool;
+    if (p.isEmpty) return null;
     if (selected >= 0) return selected;
     final a = phase == Phase.on ? stats?.active : null;
-    return a != null && a < servers.length ? a : null;
+    return a != null && a < p.length ? a : null;
   }
 
   String get locTitle {
-    if (servers.isEmpty) return 'No servers yet';
-    if (selected >= 0) return _clean(servers[selected].name);
+    final p = pool;
+    if (p.isEmpty) return onFree ? 'No free servers yet' : 'No servers yet';
+    if (selected >= 0) return _clean(p[selected].name);
     final a = activeIndex;
     return a == null
-        ? 'Auto · best server'
-        : 'Auto · ${_clean(servers[a].name)}';
+        ? (onFree ? 'Auto · free server' : 'Auto · best server')
+        : 'Auto · ${_clean(p[a].name)}';
   }
 
   String get locSub => switch (phase) {
@@ -366,7 +431,7 @@ class _HomeState extends State<Home> with TrayListener {
     ].whereType<String>().where((e) => e.isNotEmpty).join(' · '),
     Phase.connecting => 'Waiting for permission…',
     Phase.off =>
-      servers.isEmpty
+      pool.isEmpty
           ? 'Add a server to start'
           : mobile
           ? 'Tap to connect'
@@ -453,6 +518,7 @@ class _HomeState extends State<Home> with TrayListener {
     setState(() {
       cur = i;
       selected = -1;
+      onFree = false;
     });
     _save();
     _pingAll();
@@ -634,7 +700,7 @@ class _HomeState extends State<Home> with TrayListener {
       case 'delete':
         setState(() {
           servers.removeAt(i);
-          selected = -1;
+          if (!onFree) selected = -1;
           pings = {};
         });
         await _save();
@@ -660,14 +726,15 @@ class _HomeState extends State<Home> with TrayListener {
   // ponytail: country comes from the flag emoji in the name; unflagged = unknown.
   Map<String, dynamic>? _aiServer() {
     if (!opt.smartAi) return null;
-    final pool = selected < 0 ? servers : [servers[selected]];
-    if (!pool.any((s) => _geminiBlocked.contains(_cc(s.name)))) return null;
+    final all = pool;
+    int? ms(int i) => onFree ? freePool[i].delay : pings[i];
+    final use = selected < 0 ? all : [all[selected]];
+    if (!use.any((s) => _geminiBlocked.contains(_cc(s.name)))) return null;
     final ok = [
-      for (var i = 0; i < servers.length; i++)
-        if (_cc(servers[i].name) case final c? when !_geminiBlocked.contains(c))
-          i,
-    ]..sort((a, b) => (pings[a] ?? 1 << 30).compareTo(pings[b] ?? 1 << 30));
-    return ok.isEmpty ? null : servers[ok.first].outbound;
+      for (var i = 0; i < all.length; i++)
+        if (_cc(all[i].name) case final c? when !_geminiBlocked.contains(c)) i,
+    ]..sort((a, b) => (ms(a) ?? 1 << 30).compareTo(ms(b) ?? 1 << 30));
+    return ok.isEmpty ? null : all[ok.first].outbound;
   }
 
   // ---------- connection ----------
@@ -685,7 +752,7 @@ class _HomeState extends State<Home> with TrayListener {
         since = DateTime.now();
         msg = null;
         exitIp().then((v) => mounted ? setState(() => ip = v) : null);
-        _remember(selected >= 0 ? selected : s.active);
+        if (!onFree) _remember(selected >= 0 ? selected : s.active);
       }
     });
   }
@@ -709,7 +776,8 @@ class _HomeState extends State<Home> with TrayListener {
   Future<void> _toggle() async {
     if (demo) return;
     if (phase != Phase.off) return core.stop();
-    if (servers.isEmpty) return;
+    final all = pool;
+    if (all.isEmpty) return;
     setState(() {
       phase = Phase.connecting;
       msg = null;
@@ -719,8 +787,8 @@ class _HomeState extends State<Home> with TrayListener {
       up.clear();
     });
     final proxies = selected < 0
-        ? [for (final s in servers) s.outbound]
-        : [servers[selected].outbound];
+        ? [for (final s in all) s.outbound]
+        : [all[selected].outbound];
     try {
       await core.start(proxies, ai: _aiServer(), opt: opt, (code) async {
         final tail = code == 0 ? '' : await core.logTail();
@@ -739,6 +807,134 @@ class _HomeState extends State<Home> with TrayListener {
         msg = 'Error: $e';
       });
     }
+  }
+
+  // ---------- free servers ----------
+
+  /// Opt in (after the warning) / out (removes the list).
+  Future<void> setFree(bool on) async {
+    if (on == freeOn) return;
+    if (!on) {
+      if (locked && onFree) return _toast('Disconnect first');
+      setState(() {
+        freeOn = false;
+        free = [];
+        shared = [];
+        freeUpdated = null;
+        if (onFree) selected = -1;
+        onFree = false;
+      });
+      return _save();
+    }
+    if (await _freeWarning() != true) return;
+    setState(() => freeOn = true);
+    await _save();
+    updateFree();
+  }
+
+  void pickFree(int i) {
+    if (locked) return;
+    setState(() {
+      onFree = true;
+      selected = i;
+      if (mobile) nav = 0;
+    });
+    _save();
+  }
+
+  /// Every 6 h while open and disconnected (if auto-update is on).
+  void _autoFree() {
+    final u = freeUpdated;
+    if (!freeOn || !freeAuto || locked || freeBusy || demo) return;
+    if (u != null && DateTime.now().difference(u) < const Duration(hours: 6)) {
+      return;
+    }
+    updateFree();
+  }
+
+  /// Fetch the free + community lists and keep the ones that work from here.
+  Future<void> updateFree() async {
+    if (!freeOn || freeBusy || demo) return;
+    if (locked) return _toast('Disconnect to re-test');
+    setState(() {
+      freeBusy = true;
+      freeStatus = 'Downloading lists…';
+      freeProgress = null;
+    });
+    try {
+      Future<String?> get(String u) => fetchText(u).catchError((_) => null);
+      final bodies = await Future.wait(freeSources.map(get));
+      final comm = parseCommunity(await get(communitySource) ?? '');
+      final cand = sample(
+        dedupe([for (final b in bodies) ...parseFree(b ?? '')]),
+        maxTested,
+      );
+      if (cand.isEmpty && bodies.every((b) => b == null)) {
+        throw 'Couldn\'t download the free lists';
+      }
+      final all = [for (final c in comm) c.server, ...cand];
+      void progress(int d, int t) {
+        if (mounted) {
+          setState(() {
+            freeStatus = 'Testing $d/$t…';
+            freeProgress = d / t;
+          });
+        }
+      }
+
+      final delays = reachOnly
+          ? await _reachTest(all, progress)
+          : await coreTest(coreBinary, [
+              for (final s in all) s.outbound,
+            ], progress: progress);
+      if (locked) throw 'Connected during the test — disconnect to re-test';
+      List<FreeServer> ok(Iterable<(FreeServer, int?)> l) => [
+        for (final (f, d) in l)
+          if (d != null) f.withDelay(d),
+      ]..sort((a, b) => a.delay!.compareTo(b.delay!));
+      if (!mounted) return;
+      setState(() {
+        shared = ok([
+          for (var i = 0; i < comm.length; i++) (comm[i], delays[i]),
+        ]);
+        free = ok([
+          for (var i = 0; i < cand.length; i++)
+            (FreeServer(cand[i]), delays[comm.length + i]),
+        ]).take(maxKept).toList();
+        freeUpdated = DateTime.now();
+        if (onFree) selected = -1; // indexes changed
+      });
+      await _save();
+    } catch (e) {
+      _toast('Free servers: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          freeBusy = false;
+          freeStatus = null;
+          freeProgress = null;
+        });
+      }
+    }
+  }
+
+  /// Android: TCP connect time only ("reachable", not proven working).
+  Future<List<int?>> _reachTest(
+    List<Server> l,
+    void Function(int, int) progress,
+  ) async {
+    final r = List<int?>.filled(l.length, null);
+    var next = 0, done = 0;
+    Future<void> worker() async {
+      while (next < l.length) {
+        final k = next++;
+        r[k] = await ping(l[k].host, l[k].port);
+        progress(++done, l.length);
+      }
+    }
+
+    await Future.wait([for (var w = 0; w < 16; w++) worker()]);
+    return r;
   }
 
   // ---------- helper / log ----------
@@ -917,7 +1113,7 @@ class _HomeState extends State<Home> with TrayListener {
       MenuItem(
         key: 'toggle',
         label: phase == Phase.off ? 'Connect' : 'Disconnect',
-        disabled: servers.isEmpty,
+        disabled: pool.isEmpty,
       ),
       MenuItem.separator(),
       if (favs.isNotEmpty) ...[
@@ -926,7 +1122,7 @@ class _HomeState extends State<Home> with TrayListener {
           MenuItem.checkbox(
             key: 'fav:$i',
             label: _clean(servers[i].name),
-            checked: selected == i,
+            checked: subSel == i,
             disabled: locked,
           ),
         MenuItem.separator(),
@@ -967,6 +1163,7 @@ class _HomeState extends State<Home> with TrayListener {
   }
 
   Future<void> _quit() async {
+    stopCoreTest();
     if (phase != Phase.off) await core.stop();
     exit(0); // the root core watchdog / helper session stop with us
   }

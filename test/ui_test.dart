@@ -94,7 +94,7 @@ void main() {
     await show(t, desktop, old);
     expect(t.takeException(), isNull);
     expect(find.text('Berlin'), findsWidgets); // selected, group auto-expanded
-    await tapAndSettle(t, find.text('Favorites'));
+    await tapAndSettle(t, find.byTooltip('Favorites'));
     expect(find.text('Frankfurt'), findsNothing);
   });
 
@@ -110,15 +110,15 @@ void main() {
     expect(find.text('Amsterdam'), findsNothing);
     await tapAndSettle(t, find.text('Netherlands'));
     expect(find.text('Amsterdam'), findsOneWidget);
-    await tapAndSettle(t, find.text('Favorites'));
+    await tapAndSettle(t, find.byTooltip('Favorites'));
     expect(find.text('Helsinki'), findsOneWidget);
     expect(
       find.textContaining('on any location to pin it here', findRichText: true),
       findsOneWidget,
     );
-    await tapAndSettle(t, find.text('Recent'));
+    await tapAndSettle(t, find.byTooltip('Recent'));
     expect(find.text('New York'), findsOneWidget);
-    await tapAndSettle(t, find.text('All'));
+    await tapAndSettle(t, find.byTooltip('All'));
     await tapAndSettle(t, find.byIcon(Icons.search_rounded));
     await t.enterText(find.byType(TextField), 'tok');
     await settle(t);
@@ -208,5 +208,131 @@ void main() {
     await tapAndSettle(t, find.text('Locations').last);
     await tapAndSettle(t, find.byIcon(Icons.add_rounded));
     expect(find.text('Add subscription'), findsOneWidget);
+  });
+
+  group('Free tab', () {
+    for (final (name, size, mobile) in [
+      ('desktop', desktop, false),
+      ('mobile', phone, true),
+    ]) {
+      for (final st in ['off', 'empty', 'testing', 'loaded']) {
+        testWidgets('$name renders: $st', (t) async {
+          await show(
+            t,
+            size,
+            demo(tab: 'free', nav: mobile ? 1 : 0, free: st),
+            mobile: mobile,
+          );
+          expect(t.takeException(), isNull);
+          switch (st) {
+            case 'off':
+              expect(find.text('Turn on free servers'), findsOneWidget);
+            case 'empty':
+              expect(find.text('Not tested yet'), findsOneWidget);
+              expect(find.text('Not tested yet. Tap Update.'), findsOneWidget);
+            case 'testing':
+              expect(find.text('Testing 37/200…'), findsOneWidget);
+            case 'loaded':
+              expect(find.text('Updated 12 min ago'), findsOneWidget);
+              expect(find.text('6 working'), findsOneWidget);
+              await t.scrollUntilVisible(
+                find.text('Fast DE server for students'),
+                200,
+                scrollable: find.byType(Scrollable).last,
+              );
+              expect(find.textContaining('by alice'), findsOneWidget);
+          }
+          await t.scrollUntilVisible(
+            find.text('Share your server'),
+            200,
+            scrollable: find.byType(Scrollable).last,
+          );
+          expect(t.takeException(), isNull);
+        });
+      }
+      testWidgets('$name: Android-style "reachable" label', (t) async {
+        await show(
+          t,
+          size,
+          demo(
+            tab: 'free',
+            nav: mobile ? 1 : 0,
+            free: 'loaded',
+            reachOnly: true,
+          ),
+          mobile: mobile,
+        );
+        expect(find.text('6 reachable'), findsOneWidget);
+      });
+    }
+
+    testWidgets('opt-in needs the warning to be accepted', (t) async {
+      await show(t, desktop, demo(tab: 'free'));
+      await tapAndSettle(t, find.text('Turn on free servers'));
+      expect(find.text('Before you turn this on'), findsOneWidget);
+      expect(find.textContaining('logins, banking'), findsWidgets);
+      expect(
+        find.textContaining('reviewed before they appear'),
+        findsOneWidget,
+      );
+      await tapAndSettle(t, find.text('Cancel'));
+      expect(find.text('Turn on free servers'), findsOneWidget); // still off
+      await tapAndSettle(t, find.text('Turn on free servers'));
+      await tapAndSettle(t, find.text('I understand, turn on'));
+      expect(find.text('Not tested yet'), findsOneWidget);
+    });
+
+    testWidgets('picking a free server: header shows it with a FREE badge', (
+      t,
+    ) async {
+      await show(t, desktop, demo(tab: 'free', free: 'loaded'));
+      await tapAndSettle(t, find.text('NL Free'));
+      expect(find.text('NL Free'), findsNWidgets(2)); // header + row
+      expect(find.text('FREE'), findsWidgets);
+      await tapAndSettle(t, find.byTooltip('All'));
+      expect(find.text('NL Free'), findsOneWidget); // still the pool in use
+    });
+
+    testWidgets('connected on Free: no re-test, locked selection', (t) async {
+      await show(
+        t,
+        desktop,
+        demo(tab: 'free', free: 'loaded', onFree: true, phase: 'on'),
+      );
+      expect(find.text('Disconnect to re-test'), findsOneWidget);
+      expect(find.text('Auto · DE Free 1'), findsOneWidget);
+    });
+
+    testWidgets('Preferences switch turns it off and removes the list', (
+      t,
+    ) async {
+      await show(t, desktop, demo(free: 'loaded', view: 'prefs'));
+      await t.scrollUntilVisible(
+        find.text('Free servers (community)'),
+        100,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.text('Auto-update'), findsOneWidget);
+      await tapAndSettle(t, find.text('Free servers (community)'));
+      expect(find.text('Auto-update'), findsNothing);
+      await tapAndSettle(t, find.byIcon(Icons.arrow_back_rounded));
+      await tapAndSettle(t, find.byTooltip('Free'));
+      expect(find.text('Turn on free servers'), findsOneWidget);
+    });
+
+    testWidgets('share warns that the link becomes public', (t) async {
+      await show(t, phone, demo(nav: 1, tab: 'free'), mobile: true);
+      await tapAndSettle(t, find.text('Share your server'));
+      expect(find.textContaining('PUBLIC'), findsOneWidget);
+      expect(find.text('Continue on GitHub'), findsOneWidget);
+      await tapAndSettle(t, find.text('Frankfurt'));
+      await tapAndSettle(t, find.text('Cancel'));
+    });
+
+    testWidgets('first run links to the Free tab', (t) async {
+      await show(t, desktop, demo(empty: true));
+      await tapAndSettle(t, find.text('Or try free servers'));
+      expect(find.text('Turn on free servers'), findsOneWidget);
+    });
   });
 }

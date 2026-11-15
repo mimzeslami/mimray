@@ -1,0 +1,45 @@
+# .deb + .rpm for Linux (x86_64). Built by tool/release.sh with nfpm:
+#   VERSION=0.5.0 BUNDLE=build/linux/x64/release/bundle nfpm pkg -p deb -f packaging/nfpm.yaml
+name: mimray
+arch: amd64
+platform: linux
+version: ${VERSION}
+section: net
+priority: optional
+maintainer: mimray <noreply@github.com>
+description: |
+  Simple, secure V2Ray-compatible VPN client (sing-box core).
+  VLESS/Reality, VMess, Trojan, Shadowsocks, Hysteria2; full-device TUN mode.
+vendor: mimray
+homepage: https://github.com/mimzeslami/mimray
+license: GPL-3.0-or-later
+contents:
+  - src: ${BUNDLE}/
+    dst: /opt/mimray
+    type: tree
+  - src: /opt/mimray/mimray
+    dst: /usr/bin/mimray
+    type: symlink
+  - src: packaging/mimray.desktop
+    dst: /usr/share/applications/mimray.desktop
+  - src: ${BUNDLE}/mimray.png
+    dst: /usr/share/pixmaps/mimray.png
+overrides:
+  deb:
+    depends:
+      - libgtk-3-0 | libgtk-3-0t64
+      - pkexec | policykit-1
+      - libayatana-appindicator3-1
+    recommends:
+      - zenity
+      - gnome-screenshot
+  rpm:
+    depends:
+      - gtk3
+      - polkit
+      - libayatana-appindicator-gtk3
+      - libglvnd-gles # libGLESv2.so.2 for Flutter's renderer (not pulled in by gtk3)
+      - libglvnd-egl
+    recommends:
+      - zenity
+      - gnome-screenshot

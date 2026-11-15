@@ -1,6 +1,7 @@
 package com.mimray.mimray
 
 import android.content.Intent
+import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
@@ -13,7 +14,7 @@ import java.io.File
 /**
  * Bridge to the Dart side:
  *  - method channel "mimray/vpn": filesDir, start(config) (asks for VPN permission
- *    the first time), stop, status
+ *    the first time), stop, status, installApk(path), openUrl(url)
  *  - event channel "mimray/vpn/events": {status: starting|started|stopped, error}
  */
 class MainActivity : FlutterActivity() {
@@ -52,6 +53,15 @@ class MainActivity : FlutterActivity() {
                             .setDataAndType(uri, "application/vnd.android.package-archive")
                             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK),
                     )
+                    result.success(true)
+                }
+                "openUrl" -> {
+                    // "Share your server": open the GitHub issue form in the browser
+                    val url = call.argument<String>("url")
+                    if (url == null || !url.startsWith("https://")) {
+                        return@setMethodCallHandler result.error("args", "https url required", null)
+                    }
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     result.success(true)
                 }
                 "stop" -> {

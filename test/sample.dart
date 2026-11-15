@@ -53,6 +53,9 @@ Map<String, dynamic> demo({
   int nav = 0,
   String view = 'main',
   bool helper = true,
+  String free = 'off', // off | empty | loaded | testing
+  bool onFree = false,
+  bool reachOnly = false,
 }) {
   final exp =
       DateTime.now()
@@ -113,5 +116,60 @@ Map<String, dynamic> demo({
     '_os': os,
     '_nav': nav,
     '_view': view,
+    'free': {
+      'on': free != 'off',
+      'auto': true,
+      'pool': onFree,
+      'updated': free == 'loaded'
+          ? DateTime.now()
+                .subtract(const Duration(minutes: 12))
+                .millisecondsSinceEpoch
+          : null,
+      'servers': free == 'loaded' ? _free : [],
+      'shared': free == 'loaded' ? _shared : [],
+    },
+    if (free == 'testing') ...{
+      '_freeStatus': 'Testing 37/200…',
+      '_freeProgress': 37 / 200,
+    },
+    '_reachOnly': reachOnly,
   };
 }
+
+const _freeNodes = [
+  ('🇩🇪 DE Free 1', 'shadowsocks', '54.39.96.233', 412),
+  ('🇳🇱 NL Free', 'vless', '149.40.57.134', 486),
+  ('🇫🇮 Helsinki free', 'shadowsocks', '216.106.178.169', 591),
+  ('🇺🇸 US Free 7', 'hysteria2', '94.183.164.119', 608),
+  ('Unknown location', 'shadowsocks', '198.100.154.175', 774),
+  ('🇸🇬 SG Free', 'trojan', '38.145.220.193', 1210),
+];
+
+final _free = [
+  for (final n in _freeNodes) {'server': _server(n), 'delay': n.$4},
+];
+
+final _shared = [
+  {
+    'server': _server((
+      'Fast DE server for students',
+      'vless',
+      'de.volunteer.example',
+      0,
+    )),
+    'delay': 96,
+    'title': 'Fast DE server for students',
+    'donor': 'alice',
+  },
+  {
+    'server': _server((
+      'Stable Finland node',
+      'trojan',
+      'fi.volunteer.example',
+      0,
+    )),
+    'delay': 143,
+    'title': 'Stable Finland node',
+    'donor': 'bob',
+  },
+];

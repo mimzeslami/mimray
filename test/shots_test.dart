@@ -267,4 +267,113 @@ void main() {
     'M12 first run',
     (t) => shot(t, 'M12_first_run', demo(empty: true), mobile: true),
   );
+
+  // Free tab
+  testWidgets(
+    'D15 free off',
+    (t) => shot(t, 'D15_free_off', demo(tab: 'free')),
+  );
+  testWidgets(
+    'D16 free loaded',
+    (t) => shot(t, 'D16_free_loaded', demo(tab: 'free', free: 'loaded')),
+  );
+  testWidgets(
+    'D16b free loaded scrolled',
+    (t) => shot(
+      t,
+      'D16b_free_loaded_community',
+      demo(tab: 'free', free: 'loaded'),
+      then: () async {
+        await t.drag(find.byType(Scrollable).last, const Offset(0, -300));
+        await t.pump(const Duration(milliseconds: 300));
+      },
+    ),
+  );
+  testWidgets(
+    'D17 free testing',
+    (t) => shot(t, 'D17_free_testing', demo(tab: 'free', free: 'testing')),
+  );
+  testWidgets(
+    'D18 free warning',
+    (t) => shot(
+      t,
+      'D18_free_warning',
+      demo(tab: 'free'),
+      then: tap(t, find.text('Turn on free servers')),
+    ),
+  );
+  testWidgets(
+    'D19 connected on free',
+    (t) => shot(
+      t,
+      'D19_free_connected',
+      demo(tab: 'free', free: 'loaded', onFree: true, phase: 'on'),
+    ),
+  );
+  testWidgets(
+    'D20 share',
+    (t) => shot(
+      t,
+      'D20_share',
+      demo(tab: 'free'),
+      then: tap(t, find.text('Share your server')),
+    ),
+  );
+  testWidgets(
+    'D21 prefs free',
+    (t) => shot(
+      t,
+      'D21_prefs_free',
+      demo(view: 'prefs', free: 'loaded'),
+      then: () async {
+        await t.drag(find.byType(Scrollable).last, const Offset(0, -250));
+        await t.pump(const Duration(milliseconds: 300));
+      },
+    ),
+  );
+  testWidgets(
+    'M13 free off',
+    (t) => shot(t, 'M13_free_off', demo(nav: 1, tab: 'free'), mobile: true),
+  );
+  testWidgets(
+    'M14 free loaded',
+    (t) => shot(
+      t,
+      'M14_free_loaded',
+      demo(nav: 1, tab: 'free', free: 'loaded'),
+      mobile: true,
+    ),
+  );
+  testWidgets(
+    'M15 free warning',
+    (t) => shot(
+      t,
+      'M15_free_warning',
+      demo(nav: 1, tab: 'free'),
+      mobile: true,
+      then: tap(t, find.text('Turn on free servers')),
+    ),
+  );
+  testWidgets(
+    'M16 home on free',
+    (t) => shot(
+      t,
+      'M16_home_free',
+      demo(free: 'loaded', onFree: true, sel: 1),
+      mobile: true,
+    ),
+  );
+  testWidgets(
+    'M17 settings free',
+    (t) => shot(
+      t,
+      'M17_settings_free',
+      demo(nav: 2, free: 'loaded'),
+      mobile: true,
+      then: () async {
+        await t.drag(find.byType(ListView).first, const Offset(0, -500));
+        await t.pump(const Duration(milliseconds: 300));
+      },
+    ),
+  );
 }

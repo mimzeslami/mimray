@@ -1,150 +1,161 @@
-# mimray
+<p align="center">
+  <img src="linux/mimray.png" width="96" alt="mimray logo">
+</p>
 
-A simple, secure V2Ray-compatible VPN client for **macOS**, **Linux**, **Windows** and **Android**, built with Flutter on top of the [sing-box](https://github.com/SagerNet/sing-box) core.
+<h1 align="center">mimray</h1>
 
-- **Protocols:** VMess, VLESS (incl. Reality / XTLS-Vision), Trojan, Shadowsocks, Hysteria2
-- **Full-device TUN mode** – every app goes through the tunnel; DNS over HTTPS through the tunnel (no DNS leaks); IPv6 captured
-- **Subscriptions** – several at once, switch between them, data usage + expiry shown
-- **Auto mode** – picks the fastest working server and fails over by itself, without reconnecting
-- **Smart Gemini routing** – if your server's country is blocked by Gemini, Gemini goes via a supported one automatically
-- **Import:** clipboard, QR on screen, QR image, config file (share links, base64 subscription, v2ray/xray or sing-box JSON)
-- **Export:** copy link, QR code, file – per server or per subscription
-- Live speed, traffic totals, connection count, exit IP + location
-- **No password on every connect** – an optional background helper (installed once) starts the tunnel for you
+<p align="center">
+  A simple, secure V2Ray-compatible VPN client for <b>macOS</b>, <b>Windows</b>, <b>Linux</b> and <b>Android</b>,<br>
+  built on the <a href="https://github.com/SagerNet/sing-box">sing-box</a> core.
+</p>
+
+<p align="center">
+  <a href="https://github.com/mimzeslami/mimray/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/mimzeslami/mimray?color=2F7BFF"></a>
+  <a href="https://github.com/mimzeslami/mimray/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/mimzeslami/mimray/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/mimzeslami/mimray/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/mimzeslami/mimray/total?color=3DDC97"></a>
+</p>
+
+---
+
+## Features
+
+- **Every major protocol:** VLESS (incl. Reality / XTLS-Vision), VMess, Trojan, Shadowsocks, Hysteria2
+- **Whole-device tunnel:** every app goes through the VPN; DNS-over-HTTPS inside the tunnel (no DNS leaks); IPv6 captured
+- **Subscriptions:** several at once, with data usage and expiry; servers grouped by country, favorites and recent
+- **Auto mode:** picks the fastest working server and fails over by itself, without reconnecting
+- **Free servers (opt-in):** public free servers and servers shared by the community, tested from *your* device so only working ones are shown
+- **Smart Gemini routing:** if your server's country is blocked by Gemini, Gemini traffic goes through a supported one
+- **Import & export:** clipboard, QR on screen, QR image, config file (share links, base64 subscriptions, v2ray/xray or sing-box JSON); export as link, QR or file
+- **Live stats:** speed, traffic, connections, exit IP and location
+- **No password on every connect:** an optional background helper, installed once (macOS, Linux)
+- **Updates itself:** new versions are offered in the app and verified against the release checksums before installing
 
 ## Install
 
-### macOS (Apple Silicon & Intel)
+| Platform | Recommended | Other ways |
+|---|---|---|
+| **macOS** 11+ (Apple Silicon & Intel) | `brew install --cask mimzeslami/mimray/mimray` | [Install script](#macos), [.dmg](https://github.com/mimzeslami/mimray/releases/latest) |
+| **Windows** 10/11 (x64) | [Scoop](#windows) or the [install script](#windows) | `winget install mimray` (once Microsoft approves it), [.zip](https://github.com/mimzeslami/mimray/releases/latest) |
+| **Linux** (x86_64) | `.deb` / `.rpm` from [Releases](https://github.com/mimzeslami/mimray/releases/latest) | [Install script](#linux), [.tar.gz](https://github.com/mimzeslami/mimray/releases/latest) |
+| **Android** 7.0+ | `.apk` from [Releases](https://github.com/mimzeslami/mimray/releases/latest) | [Obtainium](#android) (auto-updates from GitHub) |
+
+No Flutter, Go or developer tools are needed to install. Every download is checked against the release's `SHA256SUMS`.
+
+### macOS
+
+```sh
+brew install --cask mimzeslami/mimray/mimray
+```
+
+Or the install script, which also sets up the background helper (no password on every connect):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/mimzeslami/mimray/main/install.sh | sh
 ```
 
-Installs `mimray.app` to `/Applications` and opens it. Or download the `.dmg` from [Releases](https://github.com/mimzeslami/mimray/releases) and drag it to Applications (first launch: right-click → Open, because the app isn't notarized).
+Or download the `.dmg` and drag mimray to Applications. The app isn't notarized yet, so the first time, right-click it → **Open**.
 
-### Linux (x86_64 — Ubuntu, Debian, Mint, Fedora, Arch, openSUSE…)
+### Windows
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/mimzeslami/mimray/main/install.sh | sh
+With [Scoop](https://scoop.sh):
+
+```powershell
+scoop bucket add mimray https://github.com/mimzeslami/scoop-mimray
+scoop install mimray
 ```
 
-That's all — **no Flutter needed**. The installer:
-
-- installs the system packages it needs (GTK 3, AppIndicator for the tray icon, polkit, zenity, gnome-screenshot) with apt / dnf / pacman / zypper — it asks for your sudo password once
-- downloads the latest release and **verifies its sha256** against the release's `SHA256SUMS`
-- installs to `~/.local/share/mimray`, adds the `mimray` command and an app-menu entry
-
-**Run it:** type `mimray` in a terminal, or open **mimray** from your app menu.
-Then **+ Add → Add subscription**, pick a server (or Auto) and flip the switch — you'll be asked for your password to start the tunnel.
-
-**Update:** run the same command again.
-
-### Windows 10/11 (x64)
-
-In **PowerShell**:
+Or in PowerShell, the install script (installs to `%LOCALAPPDATA%\Programs\mimray`, adds Start Menu and Desktop shortcuts, no admin needed):
 
 ```powershell
 irm https://raw.githubusercontent.com/mimzeslami/mimray/main/install.ps1 | iex
 ```
 
-Installs to `%LOCALAPPDATA%\Programs\mimray` (no admin needed), verifies the sha256, adds Start Menu and Desktop shortcuts and opens the app.
-**Run it:** open **mimray** from the Start Menu. Windows asks for permission (UAC) each time you connect — that's needed for the tunnel.
-Or download the `.zip` from [Releases](https://github.com/mimzeslami/mimray/releases), unzip anywhere and run `mimray.exe`.
+With winget, once the submission is approved by Microsoft:
 
-### Android 7.0+
-
-Download the APK for your phone from [Releases](https://github.com/mimzeslami/mimray/releases):
-`…-android-arm64-v8a.apk` for almost all phones from the last ~8 years (`armeabi-v7a` for very old ones, `x86_64` for emulators/Chromebooks).
-Open it and allow *Install unknown apps* for your browser/file manager when Android asks.
-On first connect Android asks once to allow the VPN — tap **OK**.
-Import with **+ Add → Add servers manually** or **Import from clipboard** (camera QR scanning is coming).
-
-### Uninstall
-
-- macOS: delete `/Applications/mimray.app` and `~/Library/Application Support/mimray`
-- Windows: delete `%LOCALAPPDATA%\Programs\mimray`, `%APPDATA%\mimray` and the two `mimray` shortcuts
-- Linux: `rm -rf ~/.local/share/mimray ~/.local/bin/mimray ~/.local/share/applications/mimray.desktop ~/.config/mimray; sudo rm -f /usr/local/bin/mimray`
-
-## Usage
-
-1. **+** → paste your `https://` subscription link, or *From clipboard* / *Scan QR on screen* / *QR image* / *Config file*.
-2. Pick **Auto** or a location (servers are grouped by country), tap the power button. The installer sets up the background helper, so there's no password prompt; without it you're asked once per connect (⚙ Preferences → *Install* to add it later).
-3. ☆ pins a location to **Favorites**; **Recent** lists the last ones you connected to. ⋯ (or right-click / long-press) on a location shows its QR, copy link, export, delete. The bar at the bottom opens the subscription: usage, switch, update, export, edit.
-4. ⚙ **Preferences**: connect on launch, smart Gemini routing, block QUIC, bypass LAN, DNS provider, core log.
-5. Desktop: the tray / menu-bar icon shows the status and quick-connects to favorites.
-
-## Security notes
-
-- The sing-box core is pinned to a version and **sha256-verified** at build time.
-- Only `https` subscriptions are accepted (http would expose your credentials).
-- Configs and saved servers are stored with `600` permissions.
-- The stats API listens on `127.0.0.1` only, behind a random per-session secret.
-- The core runs as root only while connected, and stops by itself within a second if the app quits or crashes.
-- Servers whose link disables certificate checks are marked with ⚠.
-
-## The background helper
-
-The tunnel needs root. Instead of asking for your password on every connect, `install.sh` (or ⚙ Preferences → *Install*)
-sets up a small root service once: a LaunchDaemon on macOS, a systemd service on Linux. It is built to be safe:
-
-- listens on a local socket only **your user** can open (file permission + peer uid check)
-- runs only its own root-owned copy of sing-box
-- accepts only the kind of config the app generates — anything that could make the core read/write files
-  (log files, certificate paths, rule sets, cache, external UI) or listen publicly is refused
-- the tunnel lives exactly as long as the app's connection; quit or crash ⇒ it stops
-
-Remove it: ⚙ Preferences → *Remove*, or `sudo sh <app>/install-helper.sh --uninstall`.
-
-## Build from source
-
-Requires Flutter (stable). The core is downloaded and verified automatically on first build.
-
-```sh
-git clone https://github.com/mimzeslami/mimray && cd mimray
-flutter run -d macos     # or: flutter run -d linux
-./tool/release.sh        # builds dist/mimray-<ver>-macos.dmg or dist/mimray-<ver>-linux-<arch>.tar.gz
+```powershell
+winget install mimray
 ```
 
-Linux build deps: `sudo apt install clang cmake ninja-build pkg-config libgtk-3-dev libayatana-appindicator3-dev`.
-[Go](https://go.dev/dl/) 1.24+ builds the background helper (optional — without it the app asks for a password per connect).
+Windows asks for permission (UAC) when you connect, which the tunnel needs.
 
-### Android build
+### Linux
 
-The core runs in-process through sing-box's `libbox` library, built from the pinned source with only the features mimray uses:
+**Debian, Ubuntu, Mint, Pop!_OS:** download `mimray-<version>-linux-x86_64.deb`, then
 
 ```sh
-./tool/build_libbox.sh        # needs Go, Android SDK + NDK, JDK 17 → android/app/libs/libbox.aar
-flutter run -d <device>       # or: TARGET=android ./tool/release.sh  → dist/*.apk
+sudo apt install ./mimray-*-linux-x86_64.deb
 ```
 
-Release signing: add repository secrets `ANDROID_KEYSTORE_B64` (base64 of your .jks), `ANDROID_KEYSTORE_PASSWORD`,
-`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Keep that keystore safe: Android only installs updates signed with the same key.
-Without the secrets, CI builds are debug-signed (fine for testing; updates between CI builds may need an uninstall).
+**Fedora, openSUSE, RHEL:** download `mimray-<version>-linux-x86_64.rpm`, then
 
-### Signed + notarized macOS releases
+```sh
+sudo dnf install ./mimray-*-linux-x86_64.rpm
+```
 
-CI signs and notarizes automatically once these repository secrets exist (Settings → Secrets → Actions):
+**Any distro (including Arch)**, with the install script. It installs the needed packages with apt / dnf / pacman / zypper and sets up the background helper:
 
-| Secret | Value |
+```sh
+curl -fsSL https://raw.githubusercontent.com/mimzeslami/mimray/main/install.sh | sh
+```
+
+Run it from your app menu or with `mimray`. The tray icon needs AppIndicator support (on GNOME, the *AppIndicator* extension).
+
+### Android
+
+Download the APK for your phone from [Releases](https://github.com/mimzeslami/mimray/releases/latest): `arm64-v8a` for almost all phones, `armeabi-v7a` for very old ones, `x86_64` for emulators and Chromebooks. Open it and allow *Install unknown apps* when asked. On first connect, Android asks once to allow the VPN; tap **OK**.
+
+To get updates automatically, add `https://github.com/mimzeslami/mimray` in [Obtainium](https://github.com/ImranR98/Obtainium). mimray also offers new versions inside the app.
+
+## Getting started
+
+1. Tap **+** and paste your `https://` subscription link, or import from the clipboard, a QR code or a config file.
+2. Pick **Auto** or a location and tap the power button.
+3. ☆ pins a location to **Favorites**; **Recent** shows the ones you used last. Right-click, long-press or ⋯ on a location for QR, copy, export and delete.
+4. The bar at the bottom opens your subscription: usage, switching, updating and export.
+5. ⚙ **Preferences**: connect on launch, smart Gemini routing, block QUIC, bypass LAN, DNS provider, the background helper and the core log.
+
+### Free servers
+
+The **Free** tab is off until you turn it on. It lists public free servers from [barry-far/V2ray-Config](https://github.com/barry-far/V2ray-Config) and servers shared by mimray users, **tested from your own device** so only working ones are shown (desktop runs a real connection test through each server; Android checks that they're reachable).
+
+> ⚠️ Free servers are run by people you don't know. They can see and log traffic that isn't encrypted, and some exist precisely to watch the people who use them. Don't use them for logins, banking or anything sensitive. Your own server or a subscription you trust is always safer.
+
+**Share your server:** in the Free tab, *Share your server* opens a GitHub form. Shared servers appear in everyone's app after the maintainer reviews and approves them.
+
+## Uninstall
+
+| Installed with | Remove with |
 |---|---|
-| `MACOS_CERT_P12` | your *Developer ID Application* certificate exported as .p12, base64: `base64 -i cert.p12 \| pbcopy` |
-| `MACOS_CERT_PASSWORD` | the .p12 export password |
-| `MACOS_SIGN_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAMID)` |
-| `APPLE_ID` | your Apple ID email |
-| `APPLE_TEAM_ID` | 10-character team ID |
-| `APPLE_APP_PASSWORD` | an [app-specific password](https://account.apple.com) |
+| Homebrew | `brew uninstall --cask mimray` |
+| winget / Scoop | `winget uninstall mimray` / `scoop uninstall mimray` |
+| .deb / .rpm | `sudo apt remove mimray` / `sudo dnf remove mimray` |
+| macOS install script or .dmg | delete `/Applications/mimray.app` and `~/Library/Application Support/mimray` |
+| Windows install script | delete `%LOCALAPPDATA%\Programs\mimray`, `%APPDATA%\mimray` and the two shortcuts |
+| Linux install script | `rm -rf ~/.local/share/mimray ~/.local/bin/mimray ~/.local/share/applications/mimray.desktop ~/.config/mimray; sudo rm -f /usr/local/bin/mimray` |
 
-Without them releases are ad-hoc signed (first launch: right-click → Open).
+If you installed the background helper, remove it first: ⚙ Preferences → **Remove**.
 
-Tests:
+## Security
 
-```sh
-flutter test                 # parsers, config, QR, UI layout
-./tool/linux_tun_test.sh     # end-to-end Linux TUN test in Docker (traffic + DNS through a real proxy)
-./tool/linux_helper_test.sh  # end-to-end root helper test in Docker
-(cd helper && go test ./...) # helper: config validation + socket protocol
-```
+- **Pinned core:** the sing-box core is pinned to one version and its sha256 is verified at build time. Releases and in-app updates are verified against `SHA256SUMS`.
+- **Subscriptions over https only**, since plain http would expose your credentials.
+- **Private files:** your servers and settings are readable only by your user account.
+- **Local-only stats:** the stats API listens on `127.0.0.1` behind a random per-session secret.
+- **Short-lived root:** the core runs as root only while connected, and stops within a second if the app quits or crashes. Servers whose link disables certificate checks are marked ⚠.
+- **The background helper** (installed once) listens on a socket only your user can open. It runs only its own root-owned copy of sing-box, and refuses any config that could read or write files or listen publicly. Details are in [docs/BUILDING.md](docs/BUILDING.md#the-background-helper).
+
+Found a security problem? Please open a private [security advisory](https://github.com/mimzeslami/mimray/security/advisories/new) instead of a public issue.
+
+## Contributing
+
+Bug reports, fixes and features are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). To build from source, sign releases or run the end-to-end tests, see [docs/BUILDING.md](docs/BUILDING.md).
 
 ## Roadmap
 
-Camera QR scanning and file import/export on Android; background helper for Windows (no UAC prompt per connect).
+- Camera QR scanning and file import/export on Android
+- Background helper on Windows (no UAC prompt per connect)
+- Notarized macOS builds
+
+## License
+
+mimray is free software under the [GNU General Public License v3.0 or later](LICENSE) (`GPL-3.0-or-later`), the same license as the bundled [sing-box](https://github.com/SagerNet/sing-box) core. You can use, study, share and change it; versions you distribute must stay under the same license. Fonts: Geist (SIL OFL 1.1, see `assets/fonts/OFL.txt`).

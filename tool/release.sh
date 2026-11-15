@@ -1,7 +1,7 @@
 #!/bin/sh
 # One command: build a release and package an installer into dist/.
 #   macOS -> dist/mimray-<ver>-macos.dmg  (drag to Applications)
-#   Linux -> dist/mimray-<ver>-linux-<arch>.tar.gz
+#   Linux -> dist/mimray-<ver>-linux-<arch>.tar.gz (+ .deb/.rpm with nfpm)
 #   Windows (Git Bash) -> dist/mimray-<ver>-windows-x64.zip
 #   TARGET=android -> dist/mimray-<ver>-android-<abi>.apk
 #
@@ -60,6 +60,14 @@ Linux)
   flutter build linux --release # core + helper are fetched/built by CMake
   B=$(echo build/linux/*/release/bundle)
   tar czf "dist/mimray-$V-linux-$(uname -m).tar.gz" -C "$B" .
+  # .deb + .rpm (needs nfpm: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.48.0)
+  if command -v nfpm >/dev/null; then
+    sed "s|\${BUNDLE}|$PWD/$B|g; s|\${VERSION}|$V|g" packaging/nfpm.yaml > build/nfpm.yaml
+    nfpm pkg -p deb -f build/nfpm.yaml -t "dist/mimray-$V-linux-x86_64.deb"
+    nfpm pkg -p rpm -f build/nfpm.yaml -t "dist/mimray-$V-linux-x86_64.rpm"
+  else
+    echo "nfpm not found: skipping .deb/.rpm" >&2
+  fi
   ;;
 MINGW* | MSYS* | CYGWIN*)
   flutter build windows --release # core is fetched + verified by CMake
