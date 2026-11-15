@@ -33,7 +33,7 @@ Future<void> main() async {
   final serverLog = File('${dir.path}\\server.log');
   final server = await Process.start(core, ['run', '-c', serverCfg.path]);
   final sink = serverLog.openWrite();
-  server.stdout.pipe(sink);
+  server.stdout.listen(sink.add);
   server.stderr.listen(sink.add);
   await Future.delayed(const Duration(seconds: 2));
 
