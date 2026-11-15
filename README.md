@@ -156,7 +156,6 @@ Bug reports, fixes and features are welcome; see [CONTRIBUTING.md](CONTRIBUTING.
 
 ## Roadmap
 
-- File export on Android
 - Background helper on Windows (no UAC prompt per connect)
 - Notarized macOS builds
 

@@ -56,6 +56,9 @@ Future<String> _tmp(String name) async =>
 Future<String?> Function()? androidScanQr;
 Future<String?> Function(String mime)? androidPickFile;
 
+/// Android: system "Save as" dialog; returns the chosen file name (set by android_vpn.dart).
+Future<String?> Function(String name, String content)? androidSaveFile;
+
 /// Desktop: lets the user drag a box around a QR on screen. Android: opens the
 /// camera scanner. Returns the decoded text, or null if cancelled / not found.
 /// Throws a readable message if no screenshot tool is available.
@@ -138,9 +141,7 @@ Future<String?> pickOpenFile(String title, {bool image = false}) async {
 
 /// Native "save file" dialog, then writes [content]. Returns the path or null.
 Future<String?> saveTextFile(String suggestedName, String content) async {
-  if (Platform.isAndroid) {
-    throw 'Saving files isn\'t available on Android yet — use Copy instead.';
-  }
+  if (Platform.isAndroid) return androidSaveFile!(suggestedName, content);
   final ProcessResult r;
   if (Platform.isMacOS) {
     r = await Process.run('osascript', [
