@@ -181,4 +181,21 @@ Future<void> reveal(String path) => Platform.isWindows
         Platform.isMacOS ? ['-R', path] : [File(path).parent.path],
       );
 
+/// Android: set by android_vpn.dart (an ACTION_VIEW intent).
+Future<void> Function(String url)? androidOpenUrl;
+
+/// Opens an https [url] in the default browser.
+Future<void> openUrl(String url) async {
+  if (!url.startsWith('https://')) throw 'Refusing to open $url';
+  if (Platform.isAndroid) return androidOpenUrl?.call(url);
+  await Process.run(
+    Platform.isMacOS
+        ? 'open'
+        : Platform.isWindows
+        ? 'rundll32'
+        : 'xdg-open',
+    [if (Platform.isWindows) 'url.dll,FileProtocolHandler', url],
+  );
+}
+
 String _as(String s) => s.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
