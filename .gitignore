@@ -49,3 +49,8 @@ macos/core/
 linux/core/
 dist/
 windows/core/
+.claude/
+android/app/libs/
+android/key.properties
+*.jks
+*.keystore

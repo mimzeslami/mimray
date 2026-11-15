@@ -3,6 +3,7 @@
 #   macOS -> dist/mimray-<ver>-macos.dmg  (drag to Applications)
 #   Linux -> dist/mimray-<ver>-linux-<arch>.tar.gz
 #   Windows (Git Bash) -> dist/mimray-<ver>-windows-x64.zip
+#   TARGET=android -> dist/mimray-<ver>-android-<abi>.apk
 #
 # macOS signing (optional, all via env):
 #   SIGN_IDENTITY="Developer ID Application: Name (TEAMID)"   sign with Developer ID
@@ -12,6 +13,17 @@ set -eu
 cd "$(dirname "$0")/.."
 V=$(grep '^version:' pubspec.yaml | cut -d' ' -f2 | cut -d+ -f1)
 mkdir -p dist
+# Android (any host with the Android SDK): TARGET=android ./tool/release.sh
+if [ "${TARGET:-}" = android ]; then
+  [ -f android/app/libs/libbox.aar ] || ./tool/build_libbox.sh
+  flutter build apk --release --split-per-abi
+  for abi in arm64-v8a armeabi-v7a x86_64; do
+    cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "dist/mimray-$V-android-$abi.apk"
+  done
+  ls -lh dist
+  exit 0
+fi
+
 case "$(uname -s)" in
 Darwin)
   flutter build macos --release # core + helper are fetched/built by the Xcode build phase

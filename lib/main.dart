@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'android_vpn.dart';
 import 'core.dart';
 import 'links.dart';
 import 'native.dart';
@@ -82,14 +83,18 @@ final _theme = ThemeData(
   dividerColor: _line,
 );
 
-void main() => runApp(
-  MaterialApp(
-    title: 'mimray',
-    debugShowCheckedModeBanner: false,
-    theme: _theme,
-    home: const Home(),
-  ),
-);
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initAndroidVpn(); // no-op on desktop
+  runApp(
+    MaterialApp(
+      title: 'mimray',
+      debugShowCheckedModeBanner: false,
+      theme: _theme,
+      home: const Home(),
+    ),
+  );
+}
 
 enum Phase { off, connecting, on }
 
