@@ -202,6 +202,12 @@ final helperSock = Platform.isMacOS
     : '/run/mimray.sock';
 final _exeDir = File(Platform.resolvedExecutable).parent.path;
 
+/// The bundled sing-box core: next to the app binary (macOS Contents/MacOS,
+/// Linux bundle dir), sing-box.exe on Windows (MIMRAY_CORE: tests).
+String get coreBinary => Platform.isWindows
+    ? Platform.environment['MIMRAY_CORE'] ?? '$_exeDir\\sing-box.exe'
+    : '$_exeDir/sing-box';
+
 /// The install script ships inside the app when the helper was built
 /// (macOS: Contents/Resources, since scripts in Contents/MacOS break signing).
 final _helperScript = Platform.isMacOS
@@ -308,7 +314,7 @@ class Core {
 
     _stopping = false;
     if (Platform.isWindows) return _startWindows(cfg.path, onExit);
-    final bin = '${File(Platform.resolvedExecutable).parent.path}/sing-box';
+    final bin = coreBinary;
     // Root shell: run core, kill it when the app dies or the stop file appears,
     // so a crashed UI never leaves the network hijacked.
     final sh =
@@ -340,9 +346,7 @@ class Core {
   /// stops it when the app exits or the stop file appears (same as macOS/Linux).
   Future<void> _startWindows(String cfg, void Function(int) onExit) async {
     String q(String s) => "'${s.replaceAll("'", "''")}'";
-    final bin =
-        Platform.environment['MIMRAY_CORE'] ??
-        '$_exeDir\\sing-box.exe'; // env: tests
+    final bin = coreBinary;
     final inner =
         '\$p = Start-Process -FilePath ${q(bin)} -ArgumentList ${q('run -c "$cfg"')} '
         '-NoNewWindow -PassThru -RedirectStandardError ${q(log)}\n'
