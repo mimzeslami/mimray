@@ -396,6 +396,13 @@ class _HomeState extends State<Home> with TrayListener {
     () => expanded.contains(cc) ? expanded.remove(cc) : expanded.add(cc),
   );
 
+  bool get allOpen => groups.every((g) => expanded.contains(g.$1));
+
+  /// Expand every country group, or collapse all if they're already open.
+  void toggleAll() => setState(
+    () => allOpen ? expanded.clear() : expanded.addAll(groups.map((g) => g.$1)),
+  );
+
   /// Server in use: the selected one, or the one Auto picked once connected.
   int? get activeIndex {
     final p = pool;
