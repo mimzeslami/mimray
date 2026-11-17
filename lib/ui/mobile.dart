@@ -197,27 +197,23 @@ extension _MobileShell on _HomeState {
         ? '${_clean(pool[selected].name)}, ${countryName(cc)}'
         : locTitle;
     final s = stats, u = _Usage(subs.isEmpty ? const {} : subs[cur].usage);
-    Widget rate(bool dl) => Column(
+    Widget col(IconData i, String label, Color c, String v) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(
-              dl ? Icons.south_rounded : Icons.north_rounded,
-              size: 15,
-              color: dl ? _muted : _green,
-            ),
+            Icon(i, size: 15, color: c),
             const SizedBox(width: 4),
-            Text(
-              dl ? 'Download' : 'Upload',
-              style: _t(12, FontWeight.w400, dl ? _muted : _green),
-            ),
+            Text(label, style: _t(12, FontWeight.w400, c)),
           ],
         ),
         const SizedBox(height: 2),
-        Text(_rate(dl ? s?.downRate ?? 0 : s?.upRate ?? 0), style: _t(20, _w7)),
+        Text(v, maxLines: 1, style: _t(20, _w7)),
       ],
     );
+    Widget rate(bool dl) => dl
+        ? col(Icons.south_rounded, 'Download', _muted, _rate(s?.downRate ?? 0))
+        : col(Icons.north_rounded, 'Upload', _green, _rate(s?.upRate ?? 0));
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       child: _gap([
@@ -263,6 +259,15 @@ extension _MobileShell on _HomeState {
                   Expanded(child: rate(true)),
                   const SizedBox(width: 10),
                   Expanded(child: rate(false)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: col(
+                      Icons.data_usage_rounded,
+                      'Session',
+                      _muted,
+                      _b((s?.up ?? 0) + (s?.down ?? 0)),
+                    ),
+                  ),
                 ],
               ),
               SizedBox(

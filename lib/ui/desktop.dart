@@ -223,6 +223,11 @@ extension _DesktopShell on _HomeState {
               ),
             ),
             const SizedBox(width: 14),
+            Text(
+              _b((s?.up ?? 0) + (s?.down ?? 0)),
+              style: _t(12, _w6, _w(.6)),
+            ),
+            const SizedBox(width: 6),
             Icon(Icons.chevron_right_rounded, size: 16, color: _w(.6)),
           ],
         ),
@@ -269,6 +274,15 @@ extension _DesktopShell on _HomeState {
                 )
               : _tabs(),
         ),
+        if (!searching && tab == 'all') ...[
+          const SizedBox(width: 6),
+          _iconBtn(
+            allOpen ? Icons.unfold_less_rounded : Icons.unfold_more_rounded,
+            toggleAll,
+            pad: 5,
+            tip: allOpen ? 'Collapse all' : 'Expand all',
+          ),
+        ],
         const SizedBox(width: 6),
         _iconBtn(
           searching ? Icons.close_rounded : Icons.search_rounded,

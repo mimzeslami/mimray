@@ -24,7 +24,7 @@ part 'ui/desktop.dart';
 part 'ui/mobile.dart';
 part 'ui/free_tab.dart';
 
-const appVersion = '0.5.4';
+const appVersion = '0.5.5';
 
 bool get _desktopOs =>
     Platform.isMacOS || Platform.isWindows || Platform.isLinux;
@@ -394,6 +394,13 @@ class _HomeState extends State<Home> with TrayListener {
 
   void toggleGroup(String cc) => setState(
     () => expanded.contains(cc) ? expanded.remove(cc) : expanded.add(cc),
+  );
+
+  bool get allOpen => groups.every((g) => expanded.contains(g.$1));
+
+  /// Expand every country group, or collapse all if they're already open.
+  void toggleAll() => setState(
+    () => allOpen ? expanded.clear() : expanded.addAll(groups.map((g) => g.$1)),
   );
 
   /// Server in use: the selected one, or the one Auto picked once connected.
