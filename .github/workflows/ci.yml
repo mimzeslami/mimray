@@ -35,6 +35,8 @@ jobs:
       - run: ./tool/fetch_core.sh
       - name: Windows TUN end-to-end (real UAC launcher + local proxy)
         run: MIMRAY_CORE="$(cygpath -w "$PWD/windows/core/sing-box.exe")" dart run tool/win_e2e.dart
+      - name: Windows in-app update swap
+        run: dart run tool/win_update_test.dart
 
   build:
     needs: [test, windows-e2e]
@@ -62,6 +64,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libayatana-appindicator3-dev
       - if: runner.os == 'Linux'
         run: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.48.0 && echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - if: runner.os == 'Windows'
+        run: '[ -x "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" ] || choco install innosetup -y --no-progress'
       - name: Import Developer ID certificate
         if: runner.os == 'macOS' && env.MACOS_CERT_P12 != ''
         run: |

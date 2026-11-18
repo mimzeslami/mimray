@@ -35,7 +35,7 @@
 | Platform | Recommended | Other ways |
 |---|---|---|
 | **macOS** 11+ (Apple Silicon & Intel) | [Homebrew](#macos) | [Install script](#macos), [.dmg](https://github.com/mimzeslami/mimray/releases/latest) |
-| **Windows** 10/11 (x64) | [Scoop](#windows) or the [install script](#windows) | winget ([pending review](https://github.com/microsoft/winget-pkgs/pull/480738)), [.zip](https://github.com/mimzeslami/mimray/releases/latest) |
+| **Windows** 10/11 (x64) | [Installer](#windows), [Scoop](#windows) or the [install script](#windows) | winget ([pending review](https://github.com/microsoft/winget-pkgs/pull/480738)), [.zip](https://github.com/mimzeslami/mimray/releases/latest) |
 | **Linux** (x86_64) | `.deb` / `.rpm` from [Releases](https://github.com/mimzeslami/mimray/releases/latest) | [Install script](#linux), [.tar.gz](https://github.com/mimzeslami/mimray/releases/latest) |
 | **Android** 7.0+ | `.apk` from [Releases](https://github.com/mimzeslami/mimray/releases/latest) | [Obtainium](#android) (auto-updates from GitHub) |
 
@@ -61,7 +61,9 @@ Or download the `.dmg` and drag mimray to Applications. The app isn't notarized 
 
 ### Windows
 
-With [Scoop](https://scoop.sh):
+Easiest: download `mimray-<version>-windows-x64-setup.exe` from the [latest release](https://github.com/mimzeslami/mimray/releases/latest) and run it (no admin needed; uninstall from Settings → Apps).
+
+Or with [Scoop](https://scoop.sh):
 
 ```powershell
 scoop bucket add mimray https://github.com/mimzeslami/scoop-mimray
@@ -134,6 +136,7 @@ The **Free** tab is off until you turn it on. It lists public free servers from 
 | winget / Scoop | `winget uninstall mimray` / `scoop uninstall mimray` |
 | .deb / .rpm | `sudo apt remove mimray` / `sudo dnf remove mimray` |
 | macOS install script or .dmg | delete `/Applications/mimray.app` and `~/Library/Application Support/mimray` |
+| Windows installer | Settings → Apps → mimray → Uninstall |
 | Windows install script | delete `%LOCALAPPDATA%\Programs\mimray`, `%APPDATA%\mimray` and the two shortcuts |
 | Linux install script | `rm -rf ~/.local/share/mimray ~/.local/bin/mimray ~/.local/share/applications/mimray.desktop ~/.config/mimray; sudo rm -f /usr/local/bin/mimray` |
 
@@ -143,7 +146,7 @@ If you installed the background helper, remove it first: ⚙ Preferences → **R
 
 mimray is a Flutter app for the interface. All the VPN protocol work is done by **[sing-box](https://github.com/SagerNet/sing-box)**, the open-source proxy engine; mimray never implements VLESS, Reality and the rest itself.
 
-1. **Links to sing-box config.** [`lib/links.dart`](lib/links.dart) turns share links (`vless://`, `vmess://`, `trojan://`, `ss://`, `hy2://`), subscriptions and v2ray/xray/sing-box JSON into sing-box *outbounds*.
+1. **Links to sing-box config.** [`lib/links.dart`](lib/links.dart) turns share links (`vless://`, `vmess://`, `trojan://`, `ss://`, `hy2://`, `ssh://`), subscriptions and v2ray/xray/sing-box JSON into sing-box *outbounds*.
 2. **Full config.** [`lib/core.dart`](lib/core.dart) wraps them into a complete sing-box config:
    - a **TUN** inbound (a virtual network card, so the whole device goes through the VPN);
    - **DNS-over-HTTPS** through the tunnel;

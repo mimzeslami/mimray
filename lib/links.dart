@@ -1,4 +1,4 @@
-// Share links (vmess/vless/trojan/ss/hy2) and subscriptions -> sing-box outbounds.
+// Share links (vmess/vless/trojan/ss/hy2/ssh) and subscriptions -> sing-box outbounds.
 import 'dart:convert';
 
 class Server {
@@ -143,6 +143,7 @@ Server? parseLink(String link) {
       'trojan' => _vlessTrojan(Uri.parse(link), vless: false),
       'ss' => _ss(link.substring(i + 3)),
       'hy2' || 'hysteria2' => _hy2(Uri.parse(link)),
+      'ssh' => _ssh(Uri.parse(link)),
       _ => null,
     };
     return s?..link = link;
@@ -306,5 +307,21 @@ Server _hy2(Uri u) {
         'type': q['obfs'] ?? 'salamander',
         'password': q['obfs-password'],
       },
+  });
+}
+
+/// ssh://user:password@host:22#name  (no standard link exists; optional
+/// ?pk=URL-encoded PEM private key &hk=host key, for key auth / pinning)
+Server _ssh(Uri u) {
+  final q = u.queryParameters;
+  final ui = u.userInfo, c = ui.indexOf(':');
+  return _mk(_dec(u.fragment), {
+    'type': 'ssh',
+    'server': u.host,
+    'server_port': u.hasPort ? u.port : 22,
+    'user': _dec(c < 0 ? ui : ui.substring(0, c)),
+    'password': c < 0 ? null : _dec(ui.substring(c + 1)),
+    'private_key': q['pk'],
+    if (_nz(q['hk']) != null) 'host_key': [q['hk']],
   });
 }

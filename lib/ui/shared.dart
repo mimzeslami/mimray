@@ -416,7 +416,7 @@ extension _Sheets on _HomeState {
                 child: Text(
                   m
                       ? 'Paste links or JSON manually'
-                      : 'Paste vmess:// vless:// trojan:// ss:// hy2:// links manually',
+                      : 'Paste vmess:// vless:// trojan:// ss:// hy2:// ssh:// links manually',
                   style: _t(m ? 14 : 12, FontWeight.w400, _muted),
                 ),
               ),
@@ -1148,7 +1148,8 @@ extension _Sheets on _HomeState {
     Widget section(String l, Widget body) =>
         _gap([_label(l, m: m), body], m ? 8 : 6);
     final installed = helper != null;
-    final outdated = helper == '1'; // predates fake-IP DNS
+    final outdated =
+        helper == '1' || helper == '2'; // v1: no fake-IP DNS, v2: no ssh
     return [
       if (locked)
         Container(

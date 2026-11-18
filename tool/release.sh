@@ -2,7 +2,7 @@
 # One command: build a release and package an installer into dist/.
 #   macOS -> dist/mimray-<ver>-macos.dmg  (drag to Applications)
 #   Linux -> dist/mimray-<ver>-linux-<arch>.tar.gz (+ .deb/.rpm with nfpm)
-#   Windows (Git Bash) -> dist/mimray-<ver>-windows-x64.zip
+#   Windows (Git Bash) -> dist/mimray-<ver>-windows-x64.zip (+ -setup.exe with Inno Setup)
 #   TARGET=android -> dist/mimray-<ver>-android-<abi>.apk
 #
 # macOS signing (optional, all via env):
@@ -76,6 +76,13 @@ MINGW* | MSYS* | CYGWIN*)
   for d in msvcp140.dll vcruntime140.dll vcruntime140_1.dll; do cp "/c/Windows/System32/$d" "$B/"; done
   rm -f "dist/mimray-$V-windows-x64.zip"
   powershell -NoProfile -Command "Compress-Archive -Path '$(cygpath -w "$B")\\*' -DestinationPath '$(cygpath -w "$PWD/dist")\\mimray-$V-windows-x64.zip'"
+  # installer (Inno Setup 6; CI installs it with choco)
+  ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+  if [ -x "$ISCC" ]; then
+    "$ISCC" //Q "//DVersion=$V" "//DSrc=$(cygpath -w "$PWD/$B")" "//DOut=$(cygpath -w "$PWD/dist")" "$(cygpath -w packaging/mimray.iss)"
+  else
+    echo "Inno Setup not found: skipping setup.exe" >&2
+  fi
   ;;
 *) echo "unsupported OS"; exit 1 ;;
 esac

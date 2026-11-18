@@ -24,7 +24,7 @@ part 'ui/desktop.dart';
 part 'ui/mobile.dart';
 part 'ui/free_tab.dart';
 
-const appVersion = '0.5.5';
+const appVersion = '0.5.6';
 
 bool get _desktopOs =>
     Platform.isMacOS || Platform.isWindows || Platform.isLinux;
@@ -569,7 +569,7 @@ class _HomeState extends State<Home> with TrayListener {
       case 'manual':
         final t = await _textSheet(
           'Add servers',
-          'Paste vmess:// vless:// trojan:// ss:// hy2:// links or JSON config',
+          'Paste vmess:// vless:// trojan:// ss:// hy2:// ssh:// links or JSON config',
           lines: 8,
         );
         if (t != null) return _importText(t, 'input');
@@ -1207,6 +1207,7 @@ String _proto(String t) =>
       'trojan': 'Trojan',
       'shadowsocks': 'Shadowsocks',
       'hysteria2': 'Hysteria2',
+      'ssh': 'SSH',
     }[t] ??
     t;
 
