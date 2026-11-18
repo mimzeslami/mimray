@@ -40,7 +40,7 @@ func validate(c map[string]any) error {
 	if !ok || len(outs) == 0 {
 		return fmt.Errorf("outbounds required")
 	}
-	okTypes := set("vmess", "vless", "trojan", "shadowsocks", "hysteria2", "direct", "urltest", "selector")
+	okTypes := set("vmess", "vless", "trojan", "shadowsocks", "hysteria2", "ssh", "direct", "urltest", "selector")
 	for i, o := range outs {
 		m, ok := o.(map[string]any)
 		if !ok {

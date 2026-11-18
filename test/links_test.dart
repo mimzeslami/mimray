@@ -17,9 +17,10 @@ void main() {
       'ss://${base64.encode(utf8.encode('aes-256-gcm:pw'))}@c.com:8388#SS',
       'hy2://pw@d.com:443?sni=d.com&obfs=salamander&obfs-password=o&insecure=1#HY',
       'vless://u@e.com:443?type=xhttp#unsupported',
+      'ssh://root:p%40ss@f.com#SSH',
     ];
     final sub = parseSubscription(base64.encode(utf8.encode(links.join('\n'))));
-    expect(sub.length, 5);
+    expect(sub.length, 6);
     final o = {for (final s in sub) s.outbound['type']: s};
     expect(o['vmess']!.outbound['transport'], {
       'type': 'ws',
@@ -38,6 +39,13 @@ void main() {
     expect(o['trojan']!.host, '2001:db8::1');
     expect(o['shadowsocks']!.outbound['method'], 'aes-256-gcm');
     expect(o['hysteria2']!.name, '⚠ HY');
+    expect(o['ssh']!.outbound, {
+      'type': 'ssh',
+      'server': 'f.com',
+      'server_port': 22,
+      'user': 'root',
+      'password': 'p@ss',
+    });
     File('build/check_auto.json').writeAsStringSync(
       jsonEncode(
         buildConfig(

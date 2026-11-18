@@ -9,6 +9,8 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 
+import 'core.dart' show appDir;
+
 const _repo = 'mimzeslami/mimray';
 
 class Update {
@@ -231,17 +233,19 @@ Future<bool> install(String file) async {
   if (Platform.isWindows) {
     final dir = exe.parent.path;
     if (!await _writable(dir)) return false;
-    final ps =
-        'Wait-Process -Id $pid -ErrorAction SilentlyContinue; '
-        'Expand-Archive -Force ${_psq(file)} ${_psq(dir)}; '
-        'Get-ChildItem ${_psq(dir)} -Recurse | Unblock-File; '
-        'Start-Process ${_psq(exe.path)}';
+    final ps = File('${File(file).parent.path}\\update.ps1');
+    // BOM: Windows PowerShell reads BOM-less scripts as ANSI (non-ASCII paths)
+    await ps.writeAsString(
+      '\uFEFF${winUpdateScript(pid, file, dir, exe.path, '$appDir\\update.log')}',
+    );
     return _detached('powershell', [
       '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
       '-WindowStyle',
       'Hidden',
-      '-Command',
-      ps,
+      '-File',
+      ps.path,
     ]);
   }
   return false;
@@ -262,3 +266,39 @@ Future<bool> _writable(String dir) async {
     return false;
   }
 }
+
+/// Windows swap script: waits for [waitPid] to exit, unpacks [zip] over [dir]
+/// and starts [exe]. Not Expand-Archive: it's a script module, which the
+/// default "Restricted" execution policy refuses to load. Plain .NET, retried
+/// (the elevated core may hold sing-box.exe a moment after we exit); always
+/// relaunches, and logs to [log].
+String winUpdateScript(
+  int waitPid,
+  String zip,
+  String dir,
+  String exe,
+  String log,
+) =>
+    '''
+Start-Transcript -Path ${_psq(log)} -Force | Out-Null
+Wait-Process -Id $waitPid -ErrorAction SilentlyContinue
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+\$dir = ${_psq(dir)}
+for (\$i = 1; \$i -le 30; \$i++) {
+  try {
+    \$z = [IO.Compression.ZipFile]::OpenRead(${_psq(zip)})
+    try {
+      foreach (\$e in \$z.Entries) {
+        if (-not \$e.Name) { continue }
+        \$t = Join-Path \$dir (\$e.FullName -replace '/', '\\')
+        New-Item -ItemType Directory -Force (Split-Path \$t) | Out-Null
+        [IO.Compression.ZipFileExtensions]::ExtractToFile(\$e, \$t, \$true)
+      }
+    } finally { \$z.Dispose() }
+    "updated"; break
+  } catch { "attempt \$i failed: \$_"; Start-Sleep -Seconds 1 }
+}
+Get-ChildItem \$dir -Recurse | Unblock-File
+Start-Process ${_psq(exe)} -WorkingDirectory \$dir
+Stop-Transcript | Out-Null
+''';
